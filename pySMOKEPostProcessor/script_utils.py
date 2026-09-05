@@ -2,23 +2,26 @@
 wrapper functions calling multiple functionalities
 """
 
-from .maps.KineticMap import KineticMap,KineticMapSurface
 from .maps.OpenSMOKEppXMLFile import OpenSMOKEppXMLFile
 from .postprocessor import PostProcessor
 from .reaction_classes import FluxByClass, assignclass
 from .reaction_classes_utilities.reaction_classes_calc import filter_class0, sortby0
 
 
-def get_sortedrxns(kin_xml_fld, class_groups_file,heterogeneous_reactions=False):
+def get_sortedrxns(pp: PostProcessor, class_groups_file, heterogeneous_reactions: bool = False):
     """
     return dataframe of sorted reaction classes based on the specified class groups file
-    """
-    if heterogeneous_reactions == True:
-        km = KineticMapSurface(kin_xml_fld)
-    else:
-        km = KineticMap(kin_xml_fld)
 
-    rxns_sorted_obj, _ = assignclass(km, class_groups_file)
+    Args:
+        pp: a PostProcessor for the mechanism/simulation pair to classify. Classification
+            itself only depends on the mechanism, but reading it requires the same
+            ProfilesDatabase every other analysis on `pp` already uses (no output-folder
+            re-parse per call: build `pp` once, reuse it here and for the ROPA calls that
+            follow, e.g. via process_classes(..., pp=pp)).
+        class_groups_file: path to the plain-text class-groups file.
+        heterogeneous_reactions: classify the surface mechanism instead of the gas one.
+    """
+    rxns_sorted_obj, _ = assignclass(pp, class_groups_file, heterogeneous_reactions)
 
     return rxns_sorted_obj
 
@@ -33,15 +36,16 @@ def process_classes(
     species_list,
     sortlists,
     ropa_type,
-    n_of_rxns=100,
+    n_of_rxns: int = 100,
     filter_dcts=None,
     threshs=None,
     weigh="normbyspecies",
-    local_value=0.0,
-    upper_value=0.0,
-    lower_value=0.0,
-    mass_ropa=False,
-    heterogeneous_reactions = False
+    local_value: float =0.0,
+    upper_value: float =0.0,
+    lower_value: float =0.0,
+    mass_ropa: bool = False,
+    heterogeneous_reactions: bool = False,
+    pp: PostProcessor = None,
 ):
     sortdfs = []
 
@@ -50,8 +54,9 @@ def process_classes(
     if threshs is None:
         threshs = [1e-3] * len(sortlists)
 
-    # pp -- for ropa
-    pp = PostProcessor(kin_xml_fld, simul_fld)
+    # If a pre-existing pp is passed, no reason to re-build it.
+    if pp is None:
+        pp = PostProcessor(kin_xml_fld, simul_fld)
     # initialize
     fluxbyclass = FluxByClass(rxns_sorted_obj, verbose=False)
 
@@ -71,7 +76,8 @@ def process_classes(
                 lower_value=lower_value,
                 upper_value=upper_value,
                 number_of_reactions=n_of_rxns,
-                mass_ropa=mass_ropa )
+                mass_ropa=mass_ropa,
+                include_names=False )
     else:
         for sp in flat_species_list:
             tot_rop_dct[sp] = pp.RateOfProductionAnalysis_Surface(
@@ -82,7 +88,8 @@ def process_classes(
                 upper_value=upper_value,
                 number_of_reactions=n_of_rxns,
                 #mass_ropa=mass_ropa,
-                heterogeneous_reactions=heterogeneous_reactions )
+                heterogeneous_reactions=heterogeneous_reactions,
+                include_names=False )
 
     # assign flux and process according to selected criteria
     fluxbyclass.process_flux(
@@ -118,10 +125,12 @@ def cumulative_rates(
     n_of_rxns=100,
     mass_ropa=False,
     threshold=0.01,
-    heterogeneous_reactions = False
+    heterogeneous_reactions = False,
+    pp=None,
 ):
     # pp -- for ropa
-    pp = PostProcessor(kin_xml_fld, simul_fld)
+    if pp is None:
+        pp = PostProcessor(kin_xml_fld, simul_fld)
     # output - for x axis
     output = OpenSMOKEppXMLFile(simul_fld, kin_xml_fld)
     try:
@@ -156,7 +165,8 @@ def reactionrates_byclasses(
     filter_dcts=None,
     threshs=None,
     mass_ropa=False,
-    heterogeneous_reactions = False
+    heterogeneous_reactions = False,
+    pp=None,
 ):
     sortdfs = []
 
@@ -166,7 +176,8 @@ def reactionrates_byclasses(
         threshs = [1e-3] * len(sortlists)
 
     # pp -- for reactionrates
-    pp = PostProcessor(kin_xml_fld, simul_fld)
+    if pp is None:
+        pp = PostProcessor(kin_xml_fld, simul_fld)
     # output - for x axis
     output = OpenSMOKEppXMLFile(simul_fld, kin_xml_fld)
     try:

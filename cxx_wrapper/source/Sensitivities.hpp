@@ -66,15 +66,18 @@ void Sensitivities::SetNormalizationType(std::string normalizationType) {
 }
 
 void Sensitivities::SetSensitivityType(std::string sensitivityType) {
-  if (sensitivityType != "global" && sensitivityType != "local" && sensitivityType != "region") {
-    throw std::invalid_argument("Available sensitivity types are: global | local | region");
+  if (sensitivityType != "global" && sensitivityType != "local" &&
+      sensitivityType != "region") {
+    throw std::invalid_argument(
+        "Available sensitivity types are: global | local | region");
   }
 
   sensitivityType_ = sensitivityType;
 }
 
 void Sensitivities::SetOrderingType(std::string orderingType) {
-  if (orderingType != "peak-values" && orderingType != "area" && orderingType != "absolute-area") {
+  if (orderingType != "peak-values" && orderingType != "area" &&
+      orderingType != "absolute-area") {
     throw std::invalid_argument(
         "Available sensitivity types are: peak-values | area | absolute-area");
   }
@@ -89,8 +92,10 @@ void Sensitivities::SetLowerBound(double lowerBound) { lowerBound_ = lowerBound;
 
 void Sensitivities::SetUpperBound(double upperBound) { upperBound_ = upperBound; }
 
-void Sensitivities::Prepare() {
-  sensitivities = new Sensitivities_Database();
+void Sensitivities::Prepare() { PrepareWithDatabase(new Sensitivities_Database()); }
+
+void Sensitivities::PrepareWithDatabase(Sensitivities_Database* database) {
+  sensitivities = database;
   sensitivities->SetDatabase(data_);
   sensitivities->ReadParentFile();
 
@@ -129,7 +134,8 @@ void Sensitivities::Sensitivity_Analysis(const unsigned int number_of_reactions)
     // Evaluates the coefficients
     std::vector<double> total_coefficients(sensitivities->number_of_parameters());
     for (unsigned int j = 0; j < sensitivities->number_of_parameters(); j++)
-      total_coefficients[j] = sensitivities->NormalizedProfile(j, iLocalNormalization, index);
+      total_coefficients[j] =
+          sensitivities->NormalizedProfile(j, iLocalNormalization, index);
 
     // Reorder the coefficients
     MergeBars(total_indices, total_coefficients, indices, coefficients);
@@ -171,7 +177,8 @@ void Sensitivities::Sensitivity_Analysis(const unsigned int number_of_reactions)
       }
     }
 
-    const double delta = data_->additional[0][index_max] - data_->additional[0][index_min];
+    const double delta =
+        data_->additional[0][index_max] - data_->additional[0][index_min];
 
     // Fill the reaction indices
     std::vector<unsigned int> total_indices(sensitivities->number_of_parameters());
@@ -207,9 +214,11 @@ void Sensitivities::Sensitivity_Analysis(const unsigned int number_of_reactions)
         double sumMinus = 0;
         for (unsigned int i = index_min; i < index_max - 1; i++) {
           if (profile[i] < 0.)
-            sumMinus -= profile[i] * (data_->additional[0][i + 1] - data_->additional[0][i]);
+            sumMinus -=
+                profile[i] * (data_->additional[0][i + 1] - data_->additional[0][i]);
           else
-            sumPlus += profile[i] * (data_->additional[0][i + 1] - data_->additional[0][i]);
+            sumPlus +=
+                profile[i] * (data_->additional[0][i + 1] - data_->additional[0][i]);
         }
 
         if (sumPlus > sumMinus)
@@ -226,7 +235,8 @@ void Sensitivities::Sensitivity_Analysis(const unsigned int number_of_reactions)
     std::vector<double> peaks;
 
     if (orderingType_ == "peak-values")
-      MergeBars(total_indices, total_coefficients, total_peaks, indices, coefficients, peaks);
+      MergeBars(total_indices, total_coefficients, total_peaks, indices, coefficients,
+                peaks);
     else
       MergeBars(total_indices, total_coefficients, indices, coefficients);
 
@@ -237,7 +247,8 @@ void Sensitivities::Sensitivity_Analysis(const unsigned int number_of_reactions)
   }
 
   // indices it's 1-based since we have to postprocess here it is returned 0-based
-  sensitivity_coefficients_.resize(std::min<int>(number_of_reactions, coefficients.size()));
+  sensitivity_coefficients_.resize(
+      std::min<int>(number_of_reactions, coefficients.size()));
   reactions_.resize(std::min<int>(number_of_reactions, coefficients.size()));
   for (int i = 0; i < std::min<int>(number_of_reactions, coefficients.size()); i++) {
     sensitivity_coefficients_[i] = coefficients[i];
@@ -259,7 +270,8 @@ void Sensitivities::GetSensitivityProfile(unsigned int reaction_index) {
 
   unsigned int selected_reaction_indices = reaction_index;
   std::vector<double> senscoeff = sensitivities->NormalizedProfile(
-      sensitivities->current_coarse_index()[selected_reaction_indices] - 1, iLocalNormalization);
+      sensitivities->current_coarse_index()[selected_reaction_indices] - 1,
+      iLocalNormalization);
 
   sensitivity_coefficients_.resize(senscoeff.size());
   sensitivity_coefficients_ = senscoeff;

@@ -6,8 +6,8 @@
 |   \___/| .__/ \___|_| |_|____/|_|  |_|\___/|_|\_\_____||_|   |_|        |
 |        |_|                                                              |
 |                                                                         |
-|   Authors: Timoteo Dinelli <timoteo.dinelli@polimi.it>				  |
-|			 Edoardo Ramalli <edoardo.ramalli@polimi.it>				  |
+|   Authors: Timoteo Dinelli <timoteo.dinelli@polimi.it>				          |
+|			       Edoardo Ramalli <edoardo.ramalli@polimi.it>				          |
 |   CRECK Modeling Group <http://creckmodeling.chem.polimi.it>            |
 |   Department of Chemistry, Materials and Chemical Engineering           |
 |   Politecnico di Milano                                                 |
@@ -17,7 +17,7 @@
 |                                                                         |
 |   This file is part of OpenSMOKE++ framework.                           |
 |                                                                         |
-|	License																  |
+|	License																                                  |
 |                                                                         |
 |   Copyright(C) 2016-2012  Alberto Cuoci                                 |
 |   OpenSMOKE++ is free software: you can redistribute it and/or modify   |
@@ -39,17 +39,18 @@
 #define SENSITIVITIES_DATABASE_SURFACE_H
 
 #include "ProfilesDatabase.h"
-#include "Utilities.h"
 #include "Sensitivities_Database.h"
+#include "Utilities.h"
 
-class Sensitivities_Database_Surface: public virtual Sensitivities_Database
-{
-  public:
-    Sensitivities_Database_Surface();
-    //~Sensitivities_Database_Surface();
+class Sensitivities_Database_Surface : public Sensitivities_Database {
+ public:
+  explicit Sensitivities_Database_Surface(bool heterogeneousSensitivity);
 
-    void ReadParentFile(bool heterogeneousSensitivity);
-    void ReadFromChildFile(const std::string name, bool heterogeneousSensitivity);
+  void ReadParentFile() override;
+  void ReadFromChildFile(const std::string name) override;
+
+ private:
+  bool heterogeneousSensitivity_;
 };
 
 #include "Sensitivities_Database_Surface.hpp"

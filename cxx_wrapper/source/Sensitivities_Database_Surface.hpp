@@ -35,21 +35,14 @@
 |                                                                         |
 \*-----------------------------------------------------------------------*/
 
-Sensitivities_Database_Surface::Sensitivities_Database_Surface() {
-  Sensitivities_Database();
-}
-// Having this _Surface file makes it necessary for the Sensitivities files to be duplicate as well.
-// It IS possible to bring everything together in a single Sensitivities_Database, however it requires
-// to use heterogeneous version always. I'm not sure I like it as I see heterogeneous as extending gas,
-// so it should stay dependent on it and not the other way round.
+Sensitivities_Database_Surface::Sensitivities_Database_Surface(
+    bool heterogeneousSensitivity)
+    : Sensitivities_Database(), heterogeneousSensitivity_(heterogeneousSensitivity) {}
 
-// Sensitivities_Database_Surface::~Sensitivities_Database_Surface() {
-//   ~Sensitivities_Database();
-// }
-
-void Sensitivities_Database_Surface::ReadParentFile(bool heterogeneousSensitivity) {
+void Sensitivities_Database_Surface::ReadParentFile() {
   boost::filesystem::path path_results;
-  if (heterogeneousSensitivity == true) // We should look for this using the phase_name, not implemented here yet.
+  if (heterogeneousSensitivity_ ==
+      true)  // We should look for this using the phase_name, not implemented here yet.
     path_results = data_->path_folder_results_ / "Sensitivities.Surface.xml";
   else
     path_results = data_->path_folder_results_ / "Sensitivities.xml";
@@ -83,8 +76,7 @@ void Sensitivities_Database_Surface::ReadParentFile(bool heterogeneousSensitivit
     std::stringstream stream;
     stream.str(xml_main_input.get<std::string>("opensmoke.constant-parameters"));
 
-    for (unsigned int j = 0; j < number_of_parameters_; j++) 
-      stream >> parameters_[j];
+    for (unsigned int j = 0; j < number_of_parameters_; j++) stream >> parameters_[j];
   }
 
   {
@@ -104,11 +96,10 @@ void Sensitivities_Database_Surface::ReadParentFile(bool heterogeneousSensitivit
   {
     unsigned int NR;
     std::vector<std::string> reaction_strings;
-    if (heterogeneousSensitivity == true){
+    if (heterogeneousSensitivity_ == true) {
       NR = data_->kineticsMapSurfaceXML->NumberOfReactions();
       reaction_strings = data_->reaction_strings_heterogeneous_;
-    }
-    else{
+    } else {
       NR = data_->kineticsMapXML->NumberOfReactions();
       reaction_strings = data_->reaction_strings_;
     }
@@ -124,23 +115,23 @@ void Sensitivities_Database_Surface::ReadParentFile(bool heterogeneousSensitivit
       } else {
         unsigned int local_index = j + 1 - NR;
 
-        if (heterogeneousSensitivity == false)
-        {
+        if (heterogeneousSensitivity_ == false) {
           if (local_index <= data_->kineticsMapXML->NumberOfFallOffReactions()) {
             unsigned int global_index =
                 data_->kineticsMapXML->IndicesOfFalloffReactions()[local_index - 1];
             std::stringstream index;
             index << global_index;
-            std::string tmp =
-                "R" + index.str() + "(inf): " + data_->reaction_strings_[global_index - 1];
+            std::string tmp = "R" + index.str() +
+                              "(inf): " + data_->reaction_strings_[global_index - 1];
             string_list_reactions_.push_back(tmp);
           } else {
-            unsigned int global_index = data_->kineticsMapXML ->IndicesOfCabrReactions()
-                          [local_index - data_->kineticsMapXML->NumberOfFallOffReactions() - 1];
+            unsigned int global_index =
+                data_->kineticsMapXML->IndicesOfCabrReactions()
+                    [local_index - data_->kineticsMapXML->NumberOfFallOffReactions() - 1];
             std::stringstream index;
             index << global_index;
-            std::string tmp =
-                "R" + index.str() + "(inf): " + data_->reaction_strings_[global_index - 1];
+            std::string tmp = "R" + index.str() +
+                              "(inf): " + data_->reaction_strings_[global_index - 1];
             string_list_reactions_.push_back(tmp);
           }
         }
@@ -149,9 +140,10 @@ void Sensitivities_Database_Surface::ReadParentFile(bool heterogeneousSensitivit
   }
 }
 
-void Sensitivities_Database_Surface::ReadFromChildFile(const std::string name, bool heterogeneousSensitivity) {
+void Sensitivities_Database_Surface::ReadFromChildFile(const std::string name) {
   std::string local_name;
-  if (heterogeneousSensitivity == true) // As above, we should look for the name using the phase_name variable
+  if (heterogeneousSensitivity_ == true)  
+  // As above, we should look for the name using the phase_name variable
     local_name = "Sensitivities.Surface." + name + ".xml";
   else
     local_name = "Sensitivities." + name + ".xml";
@@ -162,11 +154,13 @@ void Sensitivities_Database_Surface::ReadFromChildFile(const std::string name, b
     boost::property_tree::read_xml((path_file).string(), ptree);
   } catch (...) {
     std::cout << " The file named: " << local_name
-              << " it is not present in the output folder select another specie." << std::endl;
+              << " it is not present in the output folder select another specie."
+              << std::endl;
     exit(-1);
   }
 
-  boost::optional<boost::property_tree::ptree&> child = ptree.get_child_optional("opensmoke.coefficients");
+  boost::optional<boost::property_tree::ptree&> child =
+      ptree.get_child_optional("opensmoke.coefficients");
 
   if (!child) {
     std::cout << "Corrupted xml file: missing the coefficients leaf" << std::endl;
@@ -176,7 +170,7 @@ void Sensitivities_Database_Surface::ReadFromChildFile(const std::string name, b
     stream.str(ptree.get<std::string>("opensmoke.coefficients"));
 
     for (unsigned int i = 0; i < number_of_points_; i++)
-      for (unsigned int j = 0; j < number_of_parameters_; j++) 
+      for (unsigned int j = 0; j < number_of_parameters_; j++)
         stream >> coefficients_[j][i];
   }
 
@@ -197,8 +191,10 @@ void Sensitivities_Database_Surface::ReadFromChildFile(const std::string name, b
   else {
     // recognizing the global index of species
     unsigned int species_index;
-    // IMPORTANT NOTE: we should put a try/catch here, right now I'm only performing sensitivity on gas-phase species, I'm surely not interested
-    // in surface ones, but I think I am actually interested in the bulk masses sensitivities. So - eventually - we will deal with exceptions on the names
+    // IMPORTANT NOTE: we should put a try/catch here, right now I'm only performing
+    // sensitivity on gas-phase species, I'm surely not interested in surface ones, but I
+    // think I am actually interested in the bulk masses sensitivities. So - eventually -
+    // we will deal with exceptions on the names
     for (unsigned int j = 0; j < data_->string_list_massfractions_sorted.size(); j++)
       if (name == data_->string_list_massfractions_sorted[j]) {
         species_index = data_->sorted_index[j];
@@ -207,6 +203,8 @@ void Sensitivities_Database_Surface::ReadFromChildFile(const std::string name, b
 
     // from mass to mole fractions (only performed on gas-phase species)
     for (unsigned int i = 0; i < number_of_points_; i++)
-      variable_[i] = data_->omega[species_index][i] * data_->additional[data_->index_MW][i] / data_->mw_species_[species_index];
+      variable_[i] = data_->omega[species_index][i] *
+                     data_->additional[data_->index_MW][i] /
+                     data_->mw_species_[species_index];
   }
 }

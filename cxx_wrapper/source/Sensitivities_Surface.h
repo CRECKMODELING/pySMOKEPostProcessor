@@ -39,30 +39,17 @@
 #define SENSITIVITIES_SURFACE_H
 
 #include "ProfilesDatabase.h"
-#include "Sensitivities_Database_Surface.h"
 #include "Sensitivities.h"
+#include "Sensitivities_Database_Surface.h"
 
-class Sensitivities_Surface: public virtual Sensitivities {
-  public:
-    Sensitivities_Surface();
+// The gas/surface split only differs in which Sensitivities_Database 
+// (sub)class gets constructed.
+class Sensitivities_Surface : public Sensitivities {
+ public:
+  Sensitivities_Surface();
 
-    //~Sensitivities_Surface();
-
-    void Prepare(bool heterogeneousSensitivity);
-
-    void ReadSensitivityCoefficients();
-
-    // To me, the Sensitivity_Analysis function should be exactly the same as the homogeneous case, as the difference is only in the file names 
-    // (which is why Sensitvities_Database_Surface exists). However, I can't make this thing compile with call to standard parent function.
-    void Sensitivity_Analysis(const unsigned int number_of_reactions);
-    
-  private:
-    Sensitivities_Database_Surface* sensitivities_het;  
-    // This thing is a mess, the issue is with the type of the pointer that changes with respect to parent.
-    // this variable is the only reason why we need to duplicate the code of Sensitivity_Analysis.
-
-    bool heterogeneousSensitivity_;
+  void Prepare(bool heterogeneousSensitivity);
 };
 
 #include "Sensitivities_Surface.hpp"
-#endif  // SENSITIVITIES_H
+#endif  // SENSITIVITIES_SURFACE_H

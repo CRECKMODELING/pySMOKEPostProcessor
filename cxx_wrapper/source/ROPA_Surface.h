@@ -39,27 +39,33 @@
 #define ROPA_SURFACE_H
 
 #include "ProfilesDatabase.h"
-#include "ROPA.h"   // Parent class
+#include "ROPA.h"  // Parent class
 
-// [LG] DEV note: I am unsure what to do with the heterogeneous_reactions variable and SetROPAPhase function.
-// On one side, setting it once and having it internally makes it easier to use.
-// On the other side, using it as an input parameter is generally better for readability and requires no override for parent functions.
-// Right now, the SetROPAPhase function is redundant as it is passed and updated within the other functions.
+// [LG] DEV note: I am unsure what to do with the heterogeneous_reactions variable and
+// SetROPAPhase function. On one side, setting it once and having it internally makes it
+// easier to use. On the other side, using it as an input parameter is generally better
+// for readability and requires no override for parent functions. Right now, the
+// SetROPAPhase function is redundant as it is passed and updated within the other
+// functions.
 
-class ROPA_Surface : public virtual ROPA {
+class ROPA_Surface : public ROPA {
  public:
   ROPA_Surface();
 
   void SetROPAPhase(const bool heterogeneous_reactions);
 
-  void RateOfProductionAnalysis(const unsigned int number_of_reactions, const bool heterogeneous_reactions);
+  void RateOfProductionAnalysis(const unsigned int number_of_reactions,
+                                const bool heterogeneous_reactions);
 
-  void GetReactionRates(std::vector<unsigned int> reaction_indices, const bool sum_rates, const bool heterogeneous_reactions);
+  void GetReactionRates(std::vector<unsigned int> reaction_indices, const bool sum_rates,
+                        const bool heterogeneous_reactions);
 
-  void GetFormationRates(std::string specie, std::string units, std::string type, const bool heterogeneous_reactions);
-  
+  void GetFormationRates(std::string specie, std::string units, std::string type,
+                         const bool heterogeneous_reactions);
+
   // TODO: ROPA1D for UnsteadyPFR
-  // void RateOfProductionAnalysis2D(const unsigned int number_of_reactions, const double local_x,
+  // void RateOfProductionAnalysis2D(const unsigned int number_of_reactions, const double
+  // local_x,
   //                                 const double local_z, const double region_low_x,
   //                                 const double region_up_x, const double region_low_z,
   //                                 const double region_up_z);
@@ -68,13 +74,13 @@ class ROPA_Surface : public virtual ROPA {
 
   // inline const std::vector<int>& indexSecondName() const { return indexSecondName_; };
 
-  // inline const std::vector<double>& computedThickness() const { return computedThickness_; };
+  // inline const std::vector<double>& computedThickness() const { return
+  // computedThickness_; };
 
   // inline const std::vector<double>& computedLabel() const { return computedLabel_; };
 
  protected:
   bool heterogeneous_reactions_;
-
 };
 
 #include "ROPA_Surface.hpp"

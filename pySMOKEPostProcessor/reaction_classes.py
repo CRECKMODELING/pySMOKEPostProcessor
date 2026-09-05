@@ -2,25 +2,44 @@ import copy
 
 import numpy as np
 import pandas as pd
-
+from .postprocessor import PostProcessor
+from .pySMOKEPostProcessor import ReactionClass
 from .reaction_classes_utilities.reaction_classes_calc import reaction_classes_assign, reaction_fluxes
 from .reaction_classes_utilities.reaction_classes_groups import ReadReactionsGroups
 
 
-def assignclass(kinmap, classes_definition):
+def assignclass(pp: PostProcessor, classes_definition, heterogeneous_reactions=False):
     """
-    read the kinetic mechanism and assign classes if available
-    kinmap: kinetic map already processed
-    """
+    read the kinetic mechanism and assign classes if available.
 
-    kinmap.Classes()
+    The per-reaction <ReactionClasses> labels and the (static, mechanism-only)
+    duplicate/reversible-reaction merge groups are computed once in C++ (ReactionClass),
+    reusing the ProfilesDatabase `pp` already built - no separate kinetics.xml re-parse.
+
+    Args:
+        pp: a PostProcessor for the mechanism/simulation pair being classified.
+        classes_definition: path to the plain-text class-groups file.
+        heterogeneous_reactions: classify the surface (kinetics.surface.xml) mechanism
+            instead of the gas one.
+    """
+    kinmap = pp.kms if heterogeneous_reactions else pp.km
+
+    widget = ReactionClass()
+    widget.setHeterogeneous(heterogeneous_reactions)
+    widget.setDataBase(pp.db)
+    if not widget.classesAvailable():
+        raise Exception("The kinetic mechanism provided does not contain any reaction class!")
+
+    main_class = widget.mainClass()
+    sub_class = widget.subClass()
+
     reactions_all = []
     for i in range(kinmap.NumberOfReactions):
         reaction = {
             "index": i + 1,
             "name": kinmap.reaction_names[i],
-            "class": kinmap.rxnclass[i + 1],
-            "reactiontype": kinmap.rxnsubclass[i + 1],
+            "class": main_class[i],
+            "reactiontype": sub_class[i],
         }
         reactions_all.append(reaction)
 
@@ -29,6 +48,9 @@ def assignclass(kinmap, classes_definition):
     # sort
     rxns_sorted = reaction_classes_assign(reactions_all, verbose=False)
     rxns_sorted.assign_class_grp(subcl_grp_dct)
+    # kept alive on rxns_sorted so FluxByClass.process_flux can reuse it call after
+    # call (e.g. once per timestep) without recomputing the merge groups above.
+    rxns_sorted.reaction_class_widget = widget
 
     return rxns_sorted, reactions_all
 
@@ -48,7 +70,15 @@ class FluxByClass:
         # species {spc: {ropa dct}}
         # reinitialize
         self.flux_sorted = reaction_fluxes(self.rxns_sorted.rxn_class_df, self.verbose)
-        # add fluxes
+        widget = self.rxns_sorted.reaction_class_widget
+
+        # Get every requested species' (reaction_index, coefficient) pairs first,
+        # then let C++ merge duplicate/reversible-reaction groups in one pass across
+        # all of them. 
+        # In case of fw/bw reactions contributing to different classes 
+        # (e.g. recombination vs unimolec decomposition), whichever direction actually 
+        # dominates here is the one defining the label - see ReactionClasses.hpp.
+        spnames, species_indices, species_coefficients = [], [], []
         for species in species_list:
             if isinstance(species, str):
                 sps = [species]
@@ -57,39 +87,29 @@ class FluxByClass:
                 spname = list(species.keys())[0]
                 sps = species[spname]
 
-            tot_rop_df = None
+            indices, coefficients = [], []
             for sp in sps:
-                tot_rop_df0 = pd.DataFrame(
-                    tot_rop_dct[sp]["coefficients"],
-                    index=np.array(tot_rop_dct[sp]["reaction_indices"]) + 1,
-                    columns=["flux_{}".format(spname)],
-                    dtype=np.float32,
-                )
-                #  quello sotto dovrebbe essere sufficiente
-                # tot_rop_df0 = tot_rop_df0.groupby(level=0).sum() # sum rxns with same indexes
+                indices.extend(tot_rop_dct[sp]["reaction_indices"])
+                coefficients.extend(tot_rop_dct[sp]["coefficients"])
+            spnames.append(spname)
+            species_indices.append(indices)
+            species_coefficients.append(coefficients)
 
-                if isinstance(tot_rop_df, pd.DataFrame):
-                    # concatenate
-                    tot_rop_df = pd.concat([tot_rop_df, tot_rop_df0])
-                    #  quello sotto dovrebbe essere sufficiente
-                    # tot_rop_df = tot_rop_df.groupby(level=0).sum() # sum rxns with same indexes
+        representative_indices, merged_coefficients = widget.mergeDuplicates(
+            species_indices, species_coefficients
+        )
 
-                else:
-                    tot_rop_df = copy.deepcopy(tot_rop_df0)
-
-                # Luna: nego - ho controllato e mi sembra a posto
-                # check and ask luna why first row of tot_rop_df contains the first reaction
-                # of the kinetic model even if it does not include the selected species
-
-            # sum rxns with same indices
-            # sum rxns with same indexes LPM aggiunto qui
-            tot_rop_df = tot_rop_df.groupby(level=0).sum()
-            # replace nan with 0
-            tot_rop_df = tot_rop_df.replace(np.nan, 0)
+        for spname, coefficients in zip(spnames, merged_coefficients):
+            tot_rop_df = pd.DataFrame(
+                coefficients,
+                index=np.array(representative_indices) + 1,
+                columns=["flux_{}".format(spname)],
+                dtype=np.float32,
+            )
             # concatenate flux to the dataframe of rxn classes
             self.flux_sorted.assign_flux(tot_rop_df)
 
-        self.flux_sorted.netfluxes()
+        self.flux_sorted.finalizeFlux() # It is easier to clean zeros in pd than it is in C++
 
     def sort_and_filter(
         self, sortlist, filter_dct: dict = {}, thresh: float = 1e-3, weigh: str = "false", dropunsorted: bool = True

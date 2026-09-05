@@ -170,64 +170,26 @@ class reaction_fluxes:
     # renormalize
     # rxn_class_df = rxn_class_df.sort_values(by='absflux', ascending = False)
 
-    def netfluxes(self):
+    def finalizeFlux(self):
         """
-        sum fluxes for forward and backward reactions; this includes
-            - duplicate rxns
-            - rxns written as irreversible fw/bw
+        Prepares rxn_class_df after assign_flux, before sort_and_filter takes over.
+        Updated version of the previous netfluxes function.
+
+        Merging duplicate/reversible-reaction pairs now happens upstream in C++ 
+        (ReactionClass.mergeDuplicates, called from FluxByClass.process_flux)
+        using the KineticMap stoichiometric matrix).
+        By the time rxn_class_df reaches here every duplicate group is
+        already collapsed to one row. What's left, all bookkeeping filter_flux/sortby
+        depend on afterwards:
+          - self.flux_cols: which columns are per-species flux columns.
+          - drop rows with no contribution assigned on any of them.
+          - self.rxn_class_df_all: a frozen copy of the table at this point, before
+            sort_and_filter's filter_class/filter_flux prune rxn_class_df further -
+            sortby(weigh='normbyspecies') needs it as the "before filtering" baseline
+            to compute what fraction of total flux survived filtering.
         """
-        # Delete rows where all flux columns are zero
         self.flux_cols = np.array([col for col in self.rxn_class_df.columns if 'flux' in col], dtype=str)
-        # delete row if flux is 0, much faster :)
-        # rows_todel = np.array([idx for idx in self.rxn_class_df.index if all(
-        #     self.rxn_class_df.loc[idx][self.flux_cols] == 0)])
-        # self.rxn_class_df = self.rxn_class_df.drop(rows_todel)
         self.rxn_class_df = self.rxn_class_df[~(self.rxn_class_df[self.flux_cols] == 0.).all(axis=1)]
-
-        # list of rxns and corresponding indices
-        reactions_dict = {}
-        for idx, rxn in self.rxn_class_df.iterrows():
-            if '=>' in rxn['name']:
-                rcts, prds = sorted(rxn['name'].split('=>')[0].split(
-                    '+')), sorted(rxn['name'].split('=>')[1].split('+'))
-            else:  # reversible
-                rcts, prds = sorted(rxn['name'].split('=')[0].split(
-                    '+')), sorted(rxn['name'].split('=')[1].split('+'))
-
-            keyfw = '+'.join(rcts) + '=' + '+'.join(prds)
-            keybw = '+'.join(prds) + '=' + '+'.join(rcts)
-
-            if keyfw in reactions_dict:
-                reactions_dict[keyfw].append(idx)
-            elif keybw in reactions_dict:
-                reactions_dict[keybw].append(idx)
-            else:
-                reactions_dict[keyfw] = [idx]
-
-        # Merge reactions with the same reactants and products (forward and backward)
-        # the line to keep is the one with the largest maximum flux
-        filtered_df = self.rxn_class_df[self.rxn_class_df['speciestype'] != 'UNSORTED']
-        for idxs in reactions_dict.values():
-            if len(idxs) > 1:  # there are fluxes to merge
-                # maximum value of flux - excluding UNSORTED reactions
-                filtered_idxs = [idx for idx in idxs if idx in filtered_df.index]
-                if len(filtered_idxs) == 0:  # keep the original idxs regardless of unsorted types
-                    filtered_idxs = idxs
-                # index of the maximum flux
-                max_flux_idx = filtered_idxs[np.argmax(np.abs(
-                    self.rxn_class_df.loc[filtered_idxs, self.flux_cols]).max(axis=1))]
-                # remove idx of the max flux and sum the rest of the fluxes to it
-                idxs.remove(max_flux_idx)
-
-                for idx in idxs:  # sum fluxes
-                    self.rxn_class_df.loc[max_flux_idx, self.flux_cols] += self.rxn_class_df.loc[idx, self.flux_cols]
-
-                if self.verbose:
-                    print('* merging flux {} and removing {}'.format(self.rxn_class_df['name'][max_flux_idx],
-                                                                     self.rxn_class_df['name'][idx]))
-
-                self.rxn_class_df = self.rxn_class_df.drop(idxs, axis=0)
-
         self.rxn_class_df_all = self.rxn_class_df.copy()
 
     def filter_class(self, filter_dct):
