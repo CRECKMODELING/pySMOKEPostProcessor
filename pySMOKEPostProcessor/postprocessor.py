@@ -4,7 +4,8 @@ import os
 
 from .graph_writer import GraphWriter
 from .maps.KineticMap import KineticMap, KineticMapSurface
-from .pySMOKEPostProcessor import ROPA, ProfilesDatabase, Sensitivity, ROPA_Surface, Sensitivity_Surface, SpeciesClass
+from .soot_utilities.psd import compute_psd
+from .pySMOKEPostProcessor import ROPA, ProfilesDatabase, Sensitivity, ROPA_Surface, Sensitivity_Surface, SpeciesClass, Soot
 
 # np.trapz was removed in numpy 2.0 (renamed np.trapezoid); np.trapezoid does not exist
 # before numpy 2.0. environment.yml only pins numpy>=1.20, so support both - and don't
@@ -45,6 +46,79 @@ class PostProcessor:
             self.db.readHeterogeneousKineticMechanism(self.kineticFolder,"Surface")
             self.kms = KineticMapSurface(self.kineticFolder)
 
+        # Raw <SootProperties> (PolimiSoot BIN properties). The optional block is
+        # parsed by while reading the kinetics.xml; self.soot is always
+        # present, self.soot.sootAvailable() is False when the mechanism has no soot
+        # bins. Access the per-bin arrays directly, e.g. self.soot.dpp().
+        self.soot = Soot()
+        self.soot.setDataBase(self.db)
+
+        # One-row-per-bin view of the whole <SootProperties> block. Column names
+        # match OpenSMOKE's BinProperties.txt so the two are directly comparable;
+        # Bin_index is the bin's species index in the gas-phase scheme, Bin_name
+        # its resolved species name. None when the mechanism has no soot bins.
+        self.dfSootProperties = self._build_soot_properties_dataframe()
+
+    def _build_soot_properties_dataframe(self):
+        s = self.soot
+        if not s.sootAvailable():
+            return None
+        species = self.km.species
+        names = [species[i] if 0 <= i < len(species) else None for i in s.index()]
+        return pd.DataFrame(
+            {
+                "Bin_index": list(s.index()),
+                "Bin_name": names,
+                "nC[-]": list(s.nc()),
+                "nH[-]": list(s.nh()),
+                "nO[-]": list(s.no()),
+                "H/C[-]": list(s.htoc()),
+                "MW[kg/kmol]": list(s.mw()),
+                "density[kg/m3]": list(s.density()),
+                "mass[kg]": list(s.mass()),
+                "volume[m3]": list(s.volume()),
+                "Dsph[m]": list(s.dsph()),
+                "Dcol[m]": list(s.dcol()),
+                "Dpp[m]": list(s.dpp()),
+                "Df[-]": list(s.df()),
+                "numPP[#]": list(s.numpp()),
+                "Bin_section": list(s.section()),
+            }
+        )
+
+    def SootPSD(
+        self,
+        local_value: float = 0.0,
+        particle_type: str = "all",
+        diameter_type: str = "dmob",
+        min_section: int = 5,
+        mobility_exponent: float = 0.45,
+        merge_tol: float = 0.20,
+    ):
+        """Soot particle size distribution.
+
+        particle_type: "all" keeps every BIN with Bin_section >= min_section
+            (numPP <= 0 nascent bins counted as one spherule); "primary" keeps only
+            the free primary particles (numPP == 1) - the classic PPSD - and
+            ignores min_section.
+        diameter_type: "dmob" mobility diameter dm = Dpp*numPP**mobility_exponent,
+            "dpp" primary-particle diameter, "dcol" collision diameter.
+        local_value picks the profile point like local ROPA (first point whose
+            abscissa >= local_value; abscissa is time for a reactor, a coordinate
+            for a flame).
+
+        Returns a DataFrame (<d>[nm], N[#/m3], dN/dlog10(<d>[nm])[#/m3], ...); the
+        gas state used is in df.attrs. Needs a <SootProperties> block.
+        """
+        return compute_psd(
+            self,
+            local_value,
+            particle_type=particle_type,
+            diameter_type=diameter_type,
+            min_section=min_section,
+            mobility_exponent=mobility_exponent,
+            merge_tol=merge_tol,
+        )
 
     def RateOfProductionAnalysis(
         self,

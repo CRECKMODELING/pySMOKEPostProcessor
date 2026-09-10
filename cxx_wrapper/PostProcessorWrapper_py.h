@@ -27,10 +27,6 @@
 #include "maps/ThermodynamicsMap_Surface_CHEMKIN.h"
 #include "maps/KineticsMap_Surface_CHEMKIN.h"
 
-// [LG] This was added in a second moment, it might not be required.
-#include "source/ROPA_Surface.h"
-#include "source/Sensitivities_Surface.h"
-
 // Boost library
 #include <boost/filesystem.hpp>
 #include <boost/property_tree/ptree.hpp>

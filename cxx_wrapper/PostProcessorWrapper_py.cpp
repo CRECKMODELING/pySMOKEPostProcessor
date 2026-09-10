@@ -10,6 +10,7 @@
 #include "source/Sensitivities_Surface.h"
 #include "source/ReactionClasses.h"
 #include "source/SpeciesClasses.h"
+#include "source/Soot.h"
 
 namespace py = pybind11;
 constexpr auto byref = py::return_value_policy::reference_internal;
@@ -235,4 +236,35 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
           },
           py::arg("species_indices"), py::arg("species_coefficients"),
           py::call_guard<py::gil_scoped_release>());
+
+  // Raw <SootProperties> (PolimiSoot BIN properties) accessor. The block is parsed
+  // by ProfilesDatabase during readKineticMechanism; each getter returns one
+  // per-bin vector (all sharing the bin order), e.g. pp.soot.dpp().
+  py::class_<Soot>(m, "Soot")
+      .def(py::init<>())
+      .def("setDataBase", &Soot::SetDatabase, py::arg("data"),
+           py::call_guard<py::gil_scoped_release>())
+      .def("sootAvailable", &Soot::sootAvailable,
+           py::call_guard<py::gil_scoped_release>())
+      .def("numberOfBins", &Soot::numberOfBins,
+           py::call_guard<py::gil_scoped_release>())
+      .def("index", &Soot::index, py::call_guard<py::gil_scoped_release>())
+      .def("section", &Soot::section, py::call_guard<py::gil_scoped_release>())
+      .def("nc", &Soot::nc, py::call_guard<py::gil_scoped_release>())
+      .def("nh", &Soot::nh, py::call_guard<py::gil_scoped_release>())
+      .def("no", &Soot::no, py::call_guard<py::gil_scoped_release>())
+      .def("htoc", &Soot::htoc, py::call_guard<py::gil_scoped_release>())
+      .def("mw", &Soot::mw, py::call_guard<py::gil_scoped_release>())
+      .def("density", &Soot::density, py::call_guard<py::gil_scoped_release>())
+      .def("volume", &Soot::volume, py::call_guard<py::gil_scoped_release>())
+      .def("mass", &Soot::mass, py::call_guard<py::gil_scoped_release>())
+      .def("numpp", &Soot::numpp, py::call_guard<py::gil_scoped_release>())
+      .def("dsph", &Soot::dsph, py::call_guard<py::gil_scoped_release>())
+      .def("dcol", &Soot::dcol, py::call_guard<py::gil_scoped_release>())
+      .def("dpp", &Soot::dpp, py::call_guard<py::gil_scoped_release>())
+      .def("df", &Soot::df, py::call_guard<py::gil_scoped_release>())
+      .def("psd", &Soot::ParticleSizeDistribution, py::arg("local_value") = 0.0,
+           py::arg("particle_type") = "all", py::arg("diameter_type") = "dmob",
+           py::arg("min_section") = 5, py::arg("mobility_exponent") = 0.45,
+           py::arg("merge_tol") = 0.20, py::call_guard<py::gil_scoped_release>());
 }

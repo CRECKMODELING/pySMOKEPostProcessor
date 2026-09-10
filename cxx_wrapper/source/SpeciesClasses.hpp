@@ -110,73 +110,19 @@ void SpeciesClass::SetAutoPruneDiagonal(const bool auto_prune_diagonal) {
   auto_prune_diagonal_ = auto_prune_diagonal;
 }
 
+// The <SpeciesClasses> block is parsed in ProfilesDatabase::ReadKineticMechanism
 void SpeciesClass::ReadSpeciesClasses() {
   species_classes_available_ = false;
   class_names_.clear();
   class_species_.clear();
   species_to_class_.clear();
 
-  if (data_ == nullptr || data_->thermodynamicsMapXML == nullptr) return;
-  // Check on thermoMap (should never fail), it should throw before getting here
+  if (data_ == nullptr) return;
 
-  const unsigned int ns = data_->thermodynamicsMapXML->NumberOfSpecies();
-  species_to_class_.assign(ns, -1); // The default is "species belongs to no class"
-
-  const boost::filesystem::path kinetics_file = data_->path_folder_mechanism_ / "kinetics.xml";
-  std::ifstream in(kinetics_file.string().c_str());
-  if (!in.is_open()) return; // Exits on missing kinetics, again should never fail.
-
-  // Saves ONLY the <SpeciesClasses> block
-  // actual kinetics is not required to define classes (used later).
-  std::string line;
-  std::string block;
-  bool inside = false;
-  while (std::getline(in, line)) {
-    if (!inside) {
-      if (line.find("<SpeciesClasses>") == std::string::npos) continue;
-      inside = true;
-    }
-    block += line;
-    block += "\n";
-    if (line.find("</SpeciesClasses>") != std::string::npos) break;
-  }
-  in.close();
-  if (!inside) return;
-
-  try {
-    boost::property_tree::ptree pt;
-    std::istringstream iss(block);
-    boost::property_tree::read_xml(iss, pt);
-
-    const boost::property_tree::ptree& species_classes = pt.get_child("SpeciesClasses");
-    for (const boost::property_tree::ptree::value_type& child : species_classes) {
-      if (child.first != "ClassSpecies") continue;
-
-      const std::string name = child.second.get<std::string>(
-          "<xmlattr>.name", "class_" + std::to_string(class_names_.size()));
-
-      std::vector<unsigned int> members;
-      std::istringstream body(child.second.data());
-      long idx;
-      while (body >> idx) {
-        if (idx < 0 || static_cast<unsigned int>(idx) >= ns) continue;
-        species_to_class_[idx] = static_cast<int>(class_names_.size());
-        members.push_back(static_cast<unsigned int>(idx));
-      }
-
-      class_names_.push_back(name);
-      class_species_.push_back(members);
-    }
-} catch (const std::exception& e) {
-    std::cout << "Warning! SpeciesClasses not initialized\n"
-              << "  Exception: " << e.what() << std::endl;
-    class_names_.clear();
-    class_species_.clear();
-    species_to_class_.assign(ns, -1);
-    return;
-}
-
-  species_classes_available_ = !class_names_.empty();
+  class_names_ = data_->species_class_names_;
+  class_species_ = data_->species_class_members_;
+  species_to_class_ = data_->species_to_class_;
+  species_classes_available_ = data_->has_species_classes_;
 }
 
 unsigned int SpeciesClass::ElementIndex(const std::string& element) const {

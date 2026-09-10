@@ -45,6 +45,12 @@ ProfilesDatabase::ProfilesDatabase(void) {
   iSensitivityHeterogeneousEnabled_ = false;
   is_heterogeneous_kinetics_available_ = false;
 
+  has_species_classes_ = false;
+  has_reaction_classes_ = false;
+  has_reaction_classes_heterogeneous_ = false;
+  soot_available_ = false;
+  soot_number_of_bins_ = 0;
+
   index_density = -1;
   index_velocity = -1;
   index_mass_flow_rate = -1;
@@ -69,6 +75,11 @@ bool ProfilesDatabase::ReadKineticMechanism(const std::string& folder_name) {
 
     thermodynamicsMapXML = new OpenSMOKE::ThermodynamicsMap_CHEMKIN(ptree, false);
     kineticsMapXML = new OpenSMOKE::KineticsMap_CHEMKIN(*thermodynamicsMapXML, ptree, false);
+
+    // Optional post-processing blocks
+    ReadSpeciesClassesBlock(ptree);
+    ReadReactionClassesBlock(ptree, false);
+    ReadSootProperties(ptree);
   }
 
   if (thermodynamicsMapXML->NumberOfSpecies() == omega.size()) {
@@ -141,6 +152,9 @@ bool ProfilesDatabase::ReadHeterogeneousKineticMechanism(const std::string& fold
     kineticsMapSurfaceXML = new OpenSMOKE::KineticsMap_Surface_CHEMKIN(*thermodynamicsMapSurfaceXML, ptree_het);
 
     std::cout.rdbuf(old_buf);                      // Restores the buffer to the original (goes back to printing on screen)
+
+    // Surface <ReactionClasses>
+    ReadReactionClassesBlock(ptree_het, true);
   }
 
   // Disabling this check because number of species is no longer the same (e.g. in surface I have surface fractions etc)
@@ -185,6 +199,172 @@ bool ProfilesDatabase::ReadHeterogeneousKineticMechanism(const std::string& fold
 
   is_heterogeneous_kinetics_available_ = true;
   return true;
+}
+
+// Locates an optional post-processing block in a pre-existing ptree.
+// The block location is phase-specific: in gas-phase 
+// <SpeciesClasses>/<ReactionClasses> are under <opensmoke><Kinetics>; 
+// surface mechanism blocks are in  <opensmoke><Kinetics><MaterialKinetics>.
+// <SootProperties> is a direct <opensmoke> child and is read separately.
+static boost::optional<const boost::property_tree::ptree&> FindMechanismBlock(
+    const boost::property_tree::ptree& root, const std::string& name) {
+  static const char* const parents[] = {"opensmoke.Kinetics.",
+                                        "opensmoke.Kinetics.MaterialKinetics."};
+  for (const char* parent : parents) {
+    boost::optional<const boost::property_tree::ptree&> block =
+        root.get_child_optional(std::string(parent) + name);
+    if (block) return block;
+  }
+  return boost::none;
+}
+
+// --- optional <SpeciesClasses> block ------------------------------------
+// Fills species_class_names_ / species_class_members_ and the per-species class index
+// species_to_class_ (-1 = unclassified). The block is a flat list of
+// <ClassSpecies name="..."> nodes whose text is whitespace-separated species indices.
+void ProfilesDatabase::ReadSpeciesClassesBlock(
+    const boost::property_tree::ptree& mechanism_ptree) {
+  // Init
+  has_species_classes_ = false;
+  species_class_names_.clear();
+  species_class_members_.clear();
+  const unsigned int ns = thermodynamicsMapXML->NumberOfSpecies();
+  species_to_class_.assign(ns, -1);
+
+  boost::optional<const boost::property_tree::ptree&> block =
+      FindMechanismBlock(mechanism_ptree, "SpeciesClasses");
+  if (!block) return; // Block not found: return
+
+  for (const boost::property_tree::ptree::value_type& child : *block) {
+    if (child.first != "ClassSpecies") continue;
+
+    const std::string name = child.second.get<std::string>(
+        "<xmlattr>.name", "class_" + std::to_string(species_class_names_.size()));
+
+    std::vector<unsigned int> members;
+    std::istringstream body(child.second.data());
+    long idx;
+    while (body >> idx) {
+      if (idx < 0 || static_cast<unsigned int>(idx) >= ns) continue;
+      species_to_class_[idx] = static_cast<int>(species_class_names_.size());
+      members.push_back(static_cast<unsigned int>(idx));
+    }
+
+    species_class_names_.push_back(name);
+    species_class_members_.push_back(members);
+  }
+
+  has_species_classes_ = !species_class_names_.empty();
+}
+
+// --- optional <ReactionClasses> block ----------------------------------
+// Same idea for reactions. <MainClass name> -> <SubClass name> -> <ReactionIndices>
+// (whitespace-separated). The label vectors are always sized to the phase's
+// NumberOfReactions, "UNSORTED" where a reaction has no entry.
+void ProfilesDatabase::ReadReactionClassesBlock(
+    const boost::property_tree::ptree& mechanism_ptree, const bool heterogeneous) {
+  std::vector<std::string>* main_class = &reaction_main_class_;
+  std::vector<std::string>* sub_class = &reaction_sub_class_;
+  bool* available = &has_reaction_classes_;
+  unsigned int nr = kineticsMapXML->NumberOfReactions();
+  if (heterogeneous) {
+    main_class = &reaction_main_class_heterogeneous_;
+    sub_class = &reaction_sub_class_heterogeneous_;
+    available = &has_reaction_classes_heterogeneous_;
+    nr = kineticsMapSurfaceXML->NumberOfReactions();
+  }
+
+  *available = false;
+  main_class->assign(nr, "UNSORTED");
+  sub_class->assign(nr, "UNSORTED");
+
+  boost::optional<const boost::property_tree::ptree&> block =
+      FindMechanismBlock(mechanism_ptree, "ReactionClasses");
+  if (!block) return;
+
+  for (const boost::property_tree::ptree::value_type& main_child : *block) {
+    if (main_child.first != "MainClass") continue;
+    const std::string main_name =
+        main_child.second.get<std::string>("<xmlattr>.name", "");
+
+    for (const boost::property_tree::ptree::value_type& sub_child : main_child.second) {
+      if (sub_child.first != "SubClass") continue;
+      const std::string sub_name =
+          sub_child.second.get<std::string>("<xmlattr>.name", "");
+
+      boost::optional<const boost::property_tree::ptree&> indices_node =
+          sub_child.second.get_child_optional("ReactionIndices");
+      if (!indices_node) continue;
+
+      std::istringstream body(indices_node->data());
+      long ridx;
+      while (body >> ridx) {
+        if (ridx < 0 || static_cast<unsigned int>(ridx) >= nr) continue;
+        (*main_class)[ridx] = main_name;
+        (*sub_class)[ridx] = sub_name;
+      }
+    }
+  }
+
+  *available = true;
+}
+
+// --- optional <SootProperties> block ---------------------------------
+// PolimiSoot BIN properties, one value per bin per field. This is just the flat
+// array-read half of PolimiSoot_Analyzer::BinPropertiesFromXMLFile
+// (utilities/soot/polimi), transcribed against the kinetics.xml tree already in
+// memory: no re-parse, and none of that method's class-taxonomy-dependent bin
+// grouping (which we don't expose). No block -> soot_available_ stays false and the
+// vectors stay empty; the preprocessor writes the block whole, so a block that is
+// present but missing a field is a corrupt mechanism and throws like the rest of
+// ReadKineticMechanism.
+void ProfilesDatabase::ReadSootProperties(
+    const boost::property_tree::ptree& mechanism_ptree) {
+  soot_available_ = false;
+  soot_number_of_bins_ = 0;
+
+  boost::optional<const boost::property_tree::ptree&> block =
+      mechanism_ptree.get_child_optional("opensmoke.SootProperties");
+  if (!block) return;
+
+  {
+    std::stringstream s(block->get<std::string>("NumberOfBins"));
+    s >> soot_number_of_bins_;
+  }
+
+  const auto read_uint = [&](const char* key, std::vector<unsigned int>& v) {
+    std::stringstream s(block->get<std::string>(key));
+    v.assign(soot_number_of_bins_, 0u);
+    for (unsigned int k = 0; k < soot_number_of_bins_; k++) s >> v[k];
+  };
+  const auto read_int = [&](const char* key, std::vector<int>& v) {
+    std::stringstream s(block->get<std::string>(key));
+    v.assign(soot_number_of_bins_, 0);
+    for (unsigned int k = 0; k < soot_number_of_bins_; k++) s >> v[k];
+  };
+  const auto read_double = [&](const char* key, std::vector<double>& v) {
+    std::stringstream s(block->get<std::string>(key));
+    v.assign(soot_number_of_bins_, 0.);
+    for (unsigned int k = 0; k < soot_number_of_bins_; k++) s >> v[k];
+  };
+
+  read_uint("Bin_index", soot_bin_index_);
+  read_int("Bin_section", soot_bin_section_);
+  read_double("Bin_nc", soot_bin_nc_);
+  read_double("Bin_nh", soot_bin_nh_);
+  read_double("Bin_no", soot_bin_no_);
+  read_double("Bin_htoc", soot_bin_htoc_);
+  read_double("Bin_mw", soot_bin_mw_);
+  read_double("Bin_density", soot_bin_density_);
+  read_double("Bin_volume", soot_bin_volume_);
+  read_double("Bin_mass", soot_bin_mass_);
+  read_double("Bin_numpp", soot_bin_numpp_);
+  read_double("Bin_dsph", soot_bin_dsph_);
+  read_double("Bin_dcol", soot_bin_dcol_);
+  read_double("Bin_dpp", soot_bin_dpp_);
+  read_double("Bin_df", soot_bin_df_);
+
+  soot_available_ = true;
 }
 
 bool ProfilesDatabase::ReadFileResults(const std::string& folder_name, bool isHeterogeneous) {

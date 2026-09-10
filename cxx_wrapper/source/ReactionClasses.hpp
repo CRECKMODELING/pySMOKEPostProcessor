@@ -55,6 +55,8 @@ void ReactionClass::SetDatabase(ProfilesDatabase* data) {
   ReadReactionClasses();
 }
 
+// The <ReactionClasses> block is parsed in 
+// ProfilesDatabase::ReadKineticMechanism / ReadHeterogeneousKineticMechanism
 void ReactionClass::ReadReactionClasses() {
   classes_available_ = false;
   main_class_.clear();
@@ -63,84 +65,14 @@ void ReactionClass::ReadReactionClasses() {
 
   if (data_ == nullptr) return;
 
-  unsigned int nr;
-  if (heterogeneous_ == true)
-    nr = data_->kineticsMapSurfaceXML->NumberOfReactions();
-  else
-    nr = data_->kineticsMapXML->NumberOfReactions();
-  main_class_.assign(nr, "UNSORTED");
-  sub_class_.assign(nr, "UNSORTED");
-  // All reactions are UNSORTED by default
-
-  std::string kinetics_file_name;
-  if (heterogeneous_ == true)
-    kinetics_file_name = "kinetics.surface.xml";
-  else
-    kinetics_file_name = "kinetics.xml";
-  const boost::filesystem::path kinetics_file =
-      data_->path_folder_mechanism_ / kinetics_file_name;
-  std::ifstream in(kinetics_file.string().c_str());
-  if (!in.is_open()) {
-    ComputeMergeGroups();
-    return;
-  }
-
-  // Saves ONLY the <ReactionClasses> block
-  // instead of parsing the whole kinetics file a second time.
-  std::string line;
-  std::string block;
-  bool inside = false;
-  while (std::getline(in, line)) {
-    if (!inside) {
-      if (line.find("<ReactionClasses>") == std::string::npos) continue;
-      inside = true;
-    }
-    block += line;
-    block += "\n";
-    if (line.find("</ReactionClasses>") != std::string::npos) break;
-  }
-  in.close();
-  if (!inside) {
-    ComputeMergeGroups();
-    return;
-  }
-
-  try {
-    boost::property_tree::ptree pt;
-    std::istringstream iss(block);
-    boost::property_tree::read_xml(iss, pt);
-
-    const boost::property_tree::ptree& reaction_classes = pt.get_child("ReactionClasses");
-    for (const boost::property_tree::ptree::value_type& main_child : reaction_classes) {
-      if (main_child.first != "MainClass") continue;
-      const std::string main_name =
-          main_child.second.get<std::string>("<xmlattr>.name", "");
-
-      for (const boost::property_tree::ptree::value_type& sub_child : main_child.second) {
-        if (sub_child.first != "SubClass") continue;
-        const std::string sub_name =
-            sub_child.second.get<std::string>("<xmlattr>.name", "");
-
-        boost::optional<const boost::property_tree::ptree&> indices_node =
-            sub_child.second.get_child_optional("ReactionIndices");
-        if (!indices_node) continue;
-
-        std::istringstream body(indices_node->data());
-        int idx;
-        while (body >> idx) {
-          if (idx < 0 || static_cast<unsigned int>(idx) >= nr) continue;
-          main_class_[idx] = main_name;
-          sub_class_[idx] = sub_name;
-        }
-      }
-    }
-    classes_available_ = true;
-  } catch (const std::exception& e) {
-    std::cout << "Warning! ReactionClasses not initialized\n  Exception: " << e.what()
-              << std::endl;
-    main_class_.assign(nr, "UNSORTED");
-    sub_class_.assign(nr, "UNSORTED");
-    classes_available_ = false;
+  if (heterogeneous_ == true) {
+    main_class_ = data_->reaction_main_class_heterogeneous_;
+    sub_class_ = data_->reaction_sub_class_heterogeneous_;
+    classes_available_ = data_->has_reaction_classes_heterogeneous_;
+  } else {
+    main_class_ = data_->reaction_main_class_;
+    sub_class_ = data_->reaction_sub_class_;
+    classes_available_ = data_->has_reaction_classes_;
   }
 
   ComputeMergeGroups();

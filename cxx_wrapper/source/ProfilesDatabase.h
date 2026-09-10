@@ -134,9 +134,56 @@ class ProfilesDatabase {
 
   std::string name_reactions_;
   std::vector<std::string> reaction_strings_;
-  
+
   std::string name_reactions_heterogeneous_;
   std::vector<std::string> reaction_strings_heterogeneous_;
+
+  // ---- Optional mechanism blocks ----
+  // Extracted inside ReadKineticMechanism / ReadHeterogeneousKineticMechanism while
+  // the parsing full kinetics.xml / kinetics.surface.xml  
+  // Every block is optional and the matching flag says whether it was found.
+
+  // <SpeciesClasses> (kinetics.xml). species_class_members_[c] = species indices in
+  // class c; species_to_class_[s] = the class of species s, or -1 if unclassified.
+  bool has_species_classes_;
+  std::vector<std::string> species_class_names_;
+  std::vector<std::vector<unsigned int>> species_class_members_;
+  std::vector<int> species_to_class_;
+
+  // <ReactionClasses> (gas: kinetics.xml, surface: kinetics.surface.xml). Both label
+  // vectors are always sized to the phase's NumberOfReactions, "UNSORTED" by default.
+  bool has_reaction_classes_;
+  std::vector<std::string> reaction_main_class_;
+  std::vector<std::string> reaction_sub_class_;
+  bool has_reaction_classes_heterogeneous_;
+  std::vector<std::string> reaction_main_class_heterogeneous_;
+  std::vector<std::string> reaction_sub_class_heterogeneous_;
+
+  // <SootProperties> (kinetics.xml) Empty when the mechanism carries no soot bins.
+  // Direct parser for newer mechanisms which contain the BinProperties on the XML
+  bool soot_available_;
+  unsigned int soot_number_of_bins_;
+  std::vector<unsigned int> soot_bin_index_;
+  std::vector<int> soot_bin_section_;
+  std::vector<double> soot_bin_nc_;
+  std::vector<double> soot_bin_nh_;
+  std::vector<double> soot_bin_no_;
+  std::vector<double> soot_bin_htoc_;
+  std::vector<double> soot_bin_mw_;
+  std::vector<double> soot_bin_density_;
+  std::vector<double> soot_bin_volume_;
+  std::vector<double> soot_bin_mass_;
+  std::vector<double> soot_bin_numpp_;
+  std::vector<double> soot_bin_dsph_;
+  std::vector<double> soot_bin_dcol_;
+  std::vector<double> soot_bin_dpp_;
+  std::vector<double> soot_bin_df_;
+
+ private:
+  void ReadSpeciesClassesBlock(const boost::property_tree::ptree& mechanism_ptree);
+  void ReadReactionClassesBlock(const boost::property_tree::ptree& mechanism_ptree,
+                                bool heterogeneous);
+  void ReadSootProperties(const boost::property_tree::ptree& mechanism_ptree);
 };
 
 #include "ProfilesDatabase.hpp"
