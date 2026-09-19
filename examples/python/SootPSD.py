@@ -27,16 +27,18 @@ print(f"... {len(props)} BINs, sections {props['Bin_section'].min()}"
 #      diameter_type = "dmob" -> mobility, dm = Dpp * numPP**mobility_exponent
 #                      "dpp"  -> primary-particle diameter (straight from XML)
 #                      "dcol" -> collision diameter (straight from XML)
+#                      "dva"  -> volume-equivalent sphere diameter (straight from XML)
 #    local_value picks the profile point like local ROPA (first point whose
 #    abscissa >= local_value); the gas state used is in df.attrs.
 # ---------------------------------------------------------------------------
 local_value = 0.35  # s - near peak soot for this batch-reactor fixture
 
-# Same particle population ("all"), three size coordinates. Only "dmob" applies
-# the aggregation transform Dpp * numPP**exp; "dpp"/"dcol" read the BIN property
-# directly, so total N is identical - only the abscissa (and its binning) moves.
+# Same particle population ("all"), four size coordinates. Only "dmob" applies
+# the aggregation transform Dpp * numPP**exp; "dpp"/"dcol"/"dva" read the BIN
+# property directly, so total N is identical - only the abscissa (and its
+# binning) moves.
 psd = {}
-for diam in ("dmob", "dpp", "dcol"):
+for diam in ("dmob", "dpp", "dcol", "dva"):
     psd[diam] = pp.SootPSD(local_value=local_value, particle_type="all",
                            diameter_type=diam)
     df = psd[diam]
@@ -57,14 +59,14 @@ print(f"PPSD (primary / dpp) @ abscissa = {ppsd.attrs['abscissa']:.4g}")
 print(ppsd.to_string(), "\n")
 
 # ---------------------------------------------------------------------------
-# 3) Plot the three "all" size coordinates on one axes.
+# 3) Plot the four "all" size coordinates on one axes.
 # ---------------------------------------------------------------------------
 fig, ax = plt.subplots(figsize=(7.2, 5.0))
-for diam, style in zip(("dmob", "dpp", "dcol"), ("-o", "-s", "-^")):
+for diam, style in zip(("dmob", "dpp", "dcol", "dva"), ("-o", "-s", "-^", "-d")):
     plot_distribution(psd[diam], ax=ax, label=f"all / {diam}", linestyle=style[0],
                       marker=style[1])
 ax.set_xlabel("particle diameter [nm]")
-ax.set_title("Soot PSD - mobility vs primary vs collision diameter")
+ax.set_title("Soot PSD - mobility vs primary vs collision vs volume-equivalent diameter")
 ax.legend()
 fig.tight_layout()
 # fig.savefig("SootPSD.png", dpi=200, bbox_inches="tight")

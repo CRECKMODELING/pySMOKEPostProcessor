@@ -5,6 +5,7 @@ _LABELS = {
     "dm[nm]": ("Mobility diameter $d_m$ [nm]", "d_m"),
     "dpp[nm]": ("Primary-particle diameter $d_{pp}$ [nm]", "d_{pp}"),
     "dcol[nm]": ("Collision diameter $d_{col}$ [nm]", "d_{col}"),
+    "dva[nm]": ("Volume-equivalent diameter $d_{va}$ [nm]", "d_{va}"),
 }
 
 

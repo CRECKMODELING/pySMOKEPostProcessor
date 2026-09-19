@@ -1,8 +1,6 @@
 from . import script_utils
+from .elements_balance import elements_balance
 from .graph_writer import GraphWriter
-from .maps.KineticMap import KineticMap
-from .maps.OpenSMOKEppXMLFile import OpenSMOKEppXMLFile
-from .maps.StoichiometricMap import StoichiometricMap
 
 # SubModules/Utilities
 from .plotting_utilities.area_plot import plot_class_distribution

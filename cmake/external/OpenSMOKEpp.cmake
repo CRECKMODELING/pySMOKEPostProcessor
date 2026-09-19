@@ -22,7 +22,7 @@ else()
     FetchContent_Declare(
       opensmoke
       GIT_REPOSITORY https://github.com/acuoci/OpenSMOKEpp.git
-      GIT_TAG v0.22.0
+      GIT_TAG v0.24.0
       GIT_SHALLOW TRUE
       GIT_PROGRESS TRUE
       SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/opensmoke-src

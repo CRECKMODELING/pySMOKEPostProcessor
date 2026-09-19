@@ -26,6 +26,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # -----------------------------------------------------------------------------
+# Standalone cxx_wrapper/testfiles/*.cpp drivers: bypass pybind entirely, fast
+# iteration loop for the C++ backend. Off by default so it never affects the
+# scikit-build-core wheel/pip path; enable with -DPYSMOKE_BUILD_TESTFILES=ON.
+option(PYSMOKE_BUILD_TESTFILES "Build standalone testfiles/*.cpp drivers" OFF)
+
+# -----------------------------------------------------------------------------
 # Detect if building via scikit-build-core
 if(DEFINED SKBUILD)
   message(STATUS "Building via scikit-build-core")
@@ -112,23 +118,6 @@ set(INCLUDE ${Boost_INCLUDE_DIRS}
             ${Python3_INCLUDE_DIRS}
             )
 
-## Heterogeneous ROPA
-# add_executable(ROPA_het
-#     cxx_wrapper/testfiles/ropa_het.cpp
-# )
-
-# target_include_directories(ROPA_het
-#     PRIVATE
-#         ${Boost_INCLUDE_DIRS}
-#         ${EIGEN3_INCLUDE_DIR}
-#         ${OPENSMOKE_INCLUDE}
-#         ${Python3_INCLUDE_DIRS}
-# )
-
-# target_link_libraries(ROPA_het
-#     PRIVATE
-#         Boost::filesystem
-#         Boost::system
-#         Python3::Python
-#         pybind11::headers
-# )
+# testfiles/*.cpp executable targets (PYSMOKE_BUILD_TESTFILES) are defined in
+# cxx_wrapper/CMakeLists.txt, next to the main module target whose Boost/Eigen
+# linking logic they reuse.

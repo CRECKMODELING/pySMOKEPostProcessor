@@ -11,7 +11,8 @@ One distribution, a few knobs:
   (numPP <= 0 nascent bins count as one spherule); ``"primary"`` keeps only the
   free primary particles (numPP == 1), and ignores ``min_section``.
 * ``diameter_type`` - ``"dmob"`` mobility diameter dm = Dpp * numPP**exponent,
-  ``"dpp"`` primary-particle diameter, ``"dcol"`` collision diameter.
+  ``"dpp"`` primary-particle diameter, ``"dcol"`` collision diameter,
+  ``"dva"`` volume-equivalent sphere diameter.
 
 ``local_value`` selects the profile point like local ROPA does (first point whose
 abscissa >= local_value); the abscissa is time for a reactor, a coordinate for a
@@ -23,7 +24,7 @@ import pandas as pd
 # plotting lives with the other plot helpers; re-exported here for convenience.
 from ..plotting_utilities.psd_plot import plot_distribution  # noqa: F401
 
-_DIAMETER_SYMBOL = {"dmob": "dm", "dpp": "dpp", "dcol": "dcol"}
+_DIAMETER_SYMBOL = {"dmob": "dm", "dpp": "dpp", "dcol": "dcol", "dva": "dva"}
 
 _COLUMN_ORDER = [
     "{d}[nm]", "{d}_min[nm]", "{d}_max[nm]", "N[#/m3]", "n_bins",
@@ -47,7 +48,7 @@ def compute_psd(pp, local_value, *, particle_type="all", diameter_type="dmob",
     if pp.dfSootProperties is None:
         raise ValueError("The mechanism has no <SootProperties> block")
     if diameter_type not in _DIAMETER_SYMBOL:
-        raise ValueError('diameter_type must be "dmob", "dpp" or "dcol"')
+        raise ValueError('diameter_type must be "dmob", "dpp", "dcol" or "dva"')
 
     cols, meta = pp.soot.psd(
         local_value, particle_type, diameter_type, min_section, mobility_exponent,

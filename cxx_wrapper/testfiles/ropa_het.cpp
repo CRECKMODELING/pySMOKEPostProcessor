@@ -1,16 +1,16 @@
 #include "../PostProcessorWrapper_py.h"
-#include "ProfilesDatabase.h"
-#include "ROPA_Surface.h"
+#include "core/PostProcessorCore.h"
+#include "ropa/ROPA_Surface.h"
 #include "maps/Maps_CHEMKIN"
 
 int main(int argc, char** argv)
 {
-    const std::string mechanism_folder = "/home/lgiardini/pySMOKEPostProcessor/examples/data/Surface_Data/kinetics";
-    const std::string output_folder = "/home/lgiardini/pySMOKEPostProcessor/examples/data/Surface_Data/Output";
+    const std::string mechanism_folder = std::string(PYSMOKE_EXAMPLES_DATA_DIR) + "/Surface_Data/kinetics";
+    const std::string output_folder = std::string(PYSMOKE_EXAMPLES_DATA_DIR) + "/Surface_Data/Output";
 
-    ProfilesDatabase profiles_db;
-    bool dummy = profiles_db.ReadFileResults(output_folder,true);
-    dummy = profiles_db.ReadHeterogeneousKineticMechanism(mechanism_folder,"Surface");
+    PostProcessorCore profiles_db;
+    bool dummy = profiles_db.ReadOutput(output_folder, true);
+    dummy = profiles_db.LoadKinetics(mechanism_folder);
 
     const unsigned int N_rxns = 5;
     std::vector<unsigned int> rxns_indices(N_rxns);
@@ -19,7 +19,7 @@ int main(int argc, char** argv)
     bool heterogeneous_reactions = false;
 
     ROPA_Surface ropa;
-    ropa.SetDatabase(&profiles_db);
+    ropa.SetResults(&profiles_db);
     ropa.SetROPAType("global");
     // ropa.SetSpecies("CH4");
     // ropa.RateOfProductionAnalysis(N_rxns,heterogeneous_reactions);

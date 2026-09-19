@@ -271,17 +271,15 @@ class CumulativeSootProduction(CumulativeROPAByClass):
         Raises:
             ValueError: neither approach found anything - pass soot_species explicitly.
         """
-        try:
-            pp.km.SpeciesClasses()
-            soot_classes = [c for c in pp.km.speciesClasses if c.startswith("SOOT")]
-            if not soot_classes:
-                raise ValueError("no SOOT* entry in <SpeciesClasses>")
-            species = [sp for c in soot_classes for sp in pp.km.speciesClasses[c]]
-            return species
-        except Exception:
-            pass
+        if pp.km.hasSpeciesClasses():
+            class_names = pp.km.speciesClassNames()
+            class_members = pp.km.speciesClassMembers()  # [class][member species index]
+            species_names = pp.km.speciesNames()
+            soot_classes = [k for k, name in enumerate(class_names) if name.startswith("SOOT")]
+            if soot_classes:
+                return [species_names[idx] for k in soot_classes for idx in class_members[k]]
 
-        matched = [sp for sp in _LEGACY_SOOT_BIN_SPECIES if sp in pp.km.species]
+        matched = [sp for sp in _LEGACY_SOOT_BIN_SPECIES if sp in pp.km.speciesNames()]
         if matched:
             if len(matched) < len(_LEGACY_SOOT_BIN_SPECIES):
                 print(' * Warning: only {}/{} legacy soot BIN species names found in this '

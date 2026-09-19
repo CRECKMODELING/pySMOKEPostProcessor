@@ -2,7 +2,6 @@
 wrapper functions calling multiple functionalities
 """
 
-from .maps.OpenSMOKEppXMLFile import OpenSMOKEppXMLFile
 from .postprocessor import PostProcessor
 from .reaction_classes import FluxByClass, assignclass
 from .reaction_classes_utilities.reaction_classes_calc import filter_class0, sortby0
@@ -131,13 +130,11 @@ def cumulative_rates(
     # pp -- for ropa
     if pp is None:
         pp = PostProcessor(kin_xml_fld, simul_fld)
-    # output - for x axis
-    output = OpenSMOKEppXMLFile(simul_fld, kin_xml_fld)
-    try:
-        x = getattr(output, x_axis)
-    except AttributeError:
-        print(' * Warning: attribute {} not found. using "time" as default'.format(x_axis))
-        x = output.time  # x coordinate
+    # x_axis is kept for signature compatibility but no longer picks an arbitrary
+    # Output.xml property by name - getIndependentVariableProfile() (time for a
+    # reactor, the spatial coordinate for a flame) replaced the old per-call
+    # OpenSMOKEppXMLFile re-parse this used to do just to get an x-axis.
+    x = pp.getIndependentVariableProfile()
     # ROPA for each species - if species_list contains dictionary, extract flux for each
     cum_df_dct = dict.fromkeys(species_list)
     for species in species_list:
@@ -178,13 +175,8 @@ def reactionrates_byclasses(
     # pp -- for reactionrates
     if pp is None:
         pp = PostProcessor(kin_xml_fld, simul_fld)
-    # output - for x axis
-    output = OpenSMOKEppXMLFile(simul_fld, kin_xml_fld)
-    try:
-        x = getattr(output, x_axis)
-    except AttributeError:
-        print(' * Warning: attribute {} not found. using "time" as default'.format(x_axis))
-        x = output.time  # x coordinate
+    # x_axis: see the identical note in cumulative_rates above.
+    x = pp.getIndependentVariableProfile()
 
     for i, sortlist in enumerate(sortlists):
         # filter

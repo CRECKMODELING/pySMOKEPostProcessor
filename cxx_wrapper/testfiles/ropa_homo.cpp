@@ -1,16 +1,16 @@
 #include "../PostProcessorWrapper_py.h"
-#include "ProfilesDatabase.h"
-#include "ROPA.h"
+#include "core/PostProcessorCore.h"
+#include "ropa/ROPA.h"
 #include "maps/Maps_CHEMKIN"
 
 int main(int argc, char** argv)
 {
-    const std::string mechanism_folder = "/home/lgiardini/pySMOKEPostProcessor/examples/data/ROPA/kinetics";
-    const std::string output_folder = "/home/lgiardini/pySMOKEPostProcessor/examples/data/ROPA/Output";
+    const std::string mechanism_folder = std::string(PYSMOKE_EXAMPLES_DATA_DIR) + "/ROPA/kinetics";
+    const std::string output_folder = std::string(PYSMOKE_EXAMPLES_DATA_DIR) + "/ROPA/Output";
 
-    ProfilesDatabase profiles_db;
-    bool dummy = profiles_db.ReadFileResults(output_folder,false);
-    dummy = profiles_db.ReadKineticMechanism(mechanism_folder);
+    PostProcessorCore profiles_db;
+    bool dummy = profiles_db.ReadOutput(output_folder, false);
+    dummy = profiles_db.LoadKinetics(mechanism_folder);
 
     // Sensitivities sensi;
     // sensi.SetDatabase(&profiles_db);
@@ -31,7 +31,7 @@ int main(int argc, char** argv)
     std::vector<double> rxns_coefficients(N_rxns);
 
     ROPA ropa;
-    ropa.SetDatabase(&profiles_db);
+    ropa.SetResults(&profiles_db);
     ropa.SetROPAType("global");
     ropa.SetSpecies("H2");
     ropa.RateOfProductionAnalysis(N_rxns);

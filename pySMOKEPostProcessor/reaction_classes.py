@@ -14,7 +14,7 @@ def assignclass(pp: PostProcessor, classes_definition, heterogeneous_reactions=F
 
     The per-reaction <ReactionClasses> labels and the (static, mechanism-only)
     duplicate/reversible-reaction merge groups are computed once in C++ (ReactionClass),
-    reusing the ProfilesDatabase `pp` already built - no separate kinetics.xml re-parse.
+    reusing the PostProcessorCore `pp` already built - no separate kinetics.xml re-parse.
 
     Args:
         pp: a PostProcessor for the mechanism/simulation pair being classified.
@@ -22,11 +22,11 @@ def assignclass(pp: PostProcessor, classes_definition, heterogeneous_reactions=F
         heterogeneous_reactions: classify the surface (kinetics.surface.xml) mechanism
             instead of the gas one.
     """
-    kinmap = pp.kms if heterogeneous_reactions else pp.km
+    kinmap = pp.kmhet if heterogeneous_reactions else pp.km
 
     widget = ReactionClass()
     widget.setHeterogeneous(heterogeneous_reactions)
-    widget.setDataBase(pp.db)
+    widget.setResults(pp.db)
     if not widget.classesAvailable():
         raise Exception("The kinetic mechanism provided does not contain any reaction class!")
 
@@ -34,10 +34,10 @@ def assignclass(pp: PostProcessor, classes_definition, heterogeneous_reactions=F
     sub_class = widget.subClass()
 
     reactions_all = []
-    for i in range(kinmap.NumberOfReactions):
+    for i in range(kinmap.numberOfReactions()):
         reaction = {
             "index": i + 1,
-            "name": kinmap.reaction_names[i],
+            "name": kinmap.reactionNameFromIndex(i),
             "class": main_class[i],
             "reactiontype": sub_class[i],
         }

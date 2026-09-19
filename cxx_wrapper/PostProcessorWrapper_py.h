@@ -27,6 +27,14 @@
 #include "maps/ThermodynamicsMap_Surface_CHEMKIN.h"
 #include "maps/KineticsMap_Surface_CHEMKIN.h"
 
+// Liquid phase additions
+#include "maps/ThermodynamicsMap_Liquid_CHEMKIN.h"
+#include "maps/KineticsMap_Liquid_CHEMKIN.h"
+
+// Solid phase additions
+#include "maps/ThermodynamicsMap_Solid_CHEMKIN.h"
+#include "maps/KineticsMap_Solid_CHEMKIN.h"
+
 // Boost library
 #include <boost/filesystem.hpp>
 #include <boost/property_tree/ptree.hpp>

@@ -1,32 +1,30 @@
 #include "../PostProcessorWrapper_py.h"
-#include "../source/ProfilesDatabase.h"
-#include "../source/Sensitivities_Surface.h"
+#include "../source/core/PostProcessorCore.h"
+#include "../source/sensitivity/SensitivityReader.h"
 //#include "ROPA.h"
 #include "maps/Maps_CHEMKIN"
 
 int main(int argc, char** argv)
 {
-    // TOCHANGE
-    const std::string mechanism_folder = "/home/lgiardini/pySMOKEPostProcessor/examples/data/Surface_Data/kinetics";
-    const std::string output_folder = "/home/lgiardini/pySMOKEPostProcessor/examples/data/Surface_Data/Output";
+    const std::string mechanism_folder = std::string(PYSMOKE_EXAMPLES_DATA_DIR) + "/Surface_Data/kinetics";
+    const std::string output_folder = std::string(PYSMOKE_EXAMPLES_DATA_DIR) + "/Surface_Data/Output";
 
-    ProfilesDatabase profiles_db;
-    bool dummy = profiles_db.ReadFileResults(output_folder,true);
-    dummy = profiles_db.ReadHeterogeneousKineticMechanism(mechanism_folder,"Surface");
-    Sensitivities_Surface sensi;
-    bool heterogeneousSensitivity = false;
+    PostProcessorCore profiles_db;
+    bool dummy = profiles_db.ReadOutput(output_folder, true);
+    dummy = profiles_db.LoadKinetics(mechanism_folder);
+    SensitivityReader sensi;
     const unsigned int NR = 5;
 
-    sensi.SetDatabase(&profiles_db);
+    sensi.SetResults(&profiles_db);
     sensi.SetSensitivityType("global");
     sensi.SetOrderingType("peak-values");
     sensi.SetNormalizationType("max-value");
     sensi.SetTarget("CH4");
     // Until here, everything is the same for sensitivity homogeneous and heterogeneous
 
-    
+
     // Homogeneous sensitivity analysis
-    sensi.Prepare(heterogeneousSensitivity);
+    sensi.Prepare(Phase::Gas);
     sensi.ReadSensitivityCoefficients();
     sensi.Sensitivity_Analysis(NR);
     std::vector<unsigned int> reactions = sensi.reactions();
@@ -41,8 +39,7 @@ int main(int argc, char** argv)
         std::cout << reactions[i] << std::endl;
 
     // Heterogeneous sensitivity analysis
-    heterogeneousSensitivity = true;
-    sensi.Prepare(heterogeneousSensitivity);
+    sensi.Prepare(Phase::Surface);
     sensi.ReadSensitivityCoefficients();
     sensi.Sensitivity_Analysis(NR);
     std::vector<unsigned int> reactions_het = sensi.reactions();

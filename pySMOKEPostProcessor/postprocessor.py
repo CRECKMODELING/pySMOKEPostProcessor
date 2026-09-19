@@ -1,11 +1,18 @@
 import numpy as np
 import pandas as pd
-import os
 
 from .graph_writer import GraphWriter
-from .maps.KineticMap import KineticMap, KineticMapSurface
 from .soot_utilities.psd import compute_psd
-from .pySMOKEPostProcessor import ROPA, ProfilesDatabase, Sensitivity, ROPA_Surface, Sensitivity_Surface, SpeciesClass, Soot
+from .pySMOKEPostProcessor import (
+    ROPA,
+    PostProcessorCore,
+    Phase,
+    Phase2Kind,
+    Sensitivity,
+    ROPA_Surface,
+    SpeciesClass,
+    Soot,
+)
 
 # np.trapz was removed in numpy 2.0 (renamed np.trapezoid); np.trapezoid does not exist
 # before numpy 2.0. environment.yml only pins numpy>=1.20, so support both - and don't
@@ -17,53 +24,165 @@ _trapz = getattr(np, "trapezoid", None) or np.trapz
 
 class PostProcessor:
     """
-    Main Class of the package, needed to call the C++ backend
+    Main Class of the package, needed to call the C++ backend.
+
+    Buildable from kinetics only, output only, or both - a method that needs a
+    missing input raises a clear RuntimeError (see _require_kinetics/_require_output)
+    instead of segfaulting or silently returning nonsense.
+
     Attributes:
-        db: Object representing the Output.xml file inside the C++ code
-        kineticFolder: Path pointing to the folder containing the kinetic mechanism.
-        outputFolder: Path pointing to the folder containing the Simulations Output.
-        km: Internal object representing the kinetic map. (TODO: replace in favour of OpenSMOKE_Interfaces)
+        db: PostProcessorCore, the C++ orchestrator owning both the kinetics and
+            the output state.
+        kineticFolder: last kinetics folder passed to __init__ (None if never loaded).
+        outputFolder: last output folder passed to __init__/updateOutput (None if
+            never loaded).
+        km: KineticMapReader_Gas (pybind object) once kinetics is loaded, else None.
+        kmhet: whichever phase-2 kinetics reader is loaded - KineticMapReader_Surface/
+            _Liquid/_Solid - else None. Renamed from `kms`: it now covers any
+            non-gas phase, not just Surface.
+        isHeterogeneous: True when the loaded mechanism has a *surface* phase
+            specifically (existing call sites, e.g. RateOfProductionAnalysis_Surface,
+            branch on this to mean "use the *_Surface widgets"); a Liquid/Solid
+            phase-2 leaves this False. Use db.phase2Kind() for the general case.
     """
 
-    def __init__(self, kineticFolder: str, outputFolder: str) -> None:
-        self.db = ProfilesDatabase()
+    def __init__(
+        self,
+        kineticFolder: str = None,
+        outputFolder: str = None,
+        isHeterogeneous: bool = None,
+    ) -> None:
+        self.db = PostProcessorCore()
         self.kineticFolder = kineticFolder
         self.outputFolder = outputFolder
 
-        #   Check if surface kinetics is available
-        surface_file = os.path.join(self.kineticFolder, "kinetics.surface.xml")
-        self.isHeterogeneous = os.path.exists(surface_file)
+        self.km = None
+        self.kmhet = None
+        self.isHeterogeneous = bool(isHeterogeneous)
+        self.soot = None
+        self.dfSootProperties = None
 
-        # Reads Output
-        self.db.readFileResults(self.outputFolder, self.isHeterogeneous)
-        
-        # Reads kinetics and creates kineticMap
-        self.db.readKineticMechanism(self.kineticFolder)
-        self.km = KineticMap(self.kineticFolder)
+        if kineticFolder is not None:
+            # Reads kinetics (gas + auto-detected phase-2, e.g. surface) and creates kineticMap
+            self.db.loadKinetics(kineticFolder)
+            self.km = self.db.gasKinetics()
+            if self.db.hasPhase2Kinetics():
+                self.kmhet = self.db.phase2Kinetics()
+                if isHeterogeneous is None:
+                    self.isHeterogeneous = self.db.phase2Kind() == Phase2Kind.Surface
 
-        # Reads and creates kineticMapSurface (only if available)
-        if self.isHeterogeneous:
-            self.db.readHeterogeneousKineticMechanism(self.kineticFolder,"Surface")
-            self.kms = KineticMapSurface(self.kineticFolder)
+        if outputFolder is not None:
+            # isHeterogeneous can only be auto-detected from the kinetics folder
+            # (kinetics.surface.xml presence); for output-only construction (no
+            # kineticFolder) pass it explicitly if the run is heterogeneous.
+            self.db.readFileResults(outputFolder, self.isHeterogeneous)
 
-        # Raw <SootProperties> (PolimiSoot BIN properties). The optional block is
-        # parsed by while reading the kinetics.xml; self.soot is always
-        # present, self.soot.sootAvailable() is False when the mechanism has no soot
-        # bins. Access the per-bin arrays directly, e.g. self.soot.dpp().
-        self.soot = Soot()
-        self.soot.setDataBase(self.db)
+        if self.db.hasKinetics() and self.db.hasOutput():
+            # Raw <SootProperties> (PolimiSoot BIN properties). The optional block is
+            # parsed while reading the kinetics.xml; self.soot is always present once
+            # both inputs are loaded, self.soot.sootAvailable() is False when the
+            # mechanism has no soot bins. Access the per-bin arrays directly, e.g.
+            # self.soot.dpp().
+            self.soot = Soot()
+            self.soot.setResults(self.db)
 
-        # One-row-per-bin view of the whole <SootProperties> block. Column names
-        # match OpenSMOKE's BinProperties.txt so the two are directly comparable;
-        # Bin_index is the bin's species index in the gas-phase scheme, Bin_name
-        # its resolved species name. None when the mechanism has no soot bins.
-        self.dfSootProperties = self._build_soot_properties_dataframe()
+            # One-row-per-bin view of the whole <SootProperties> block. Column names
+            # match OpenSMOKE's BinProperties.txt so the two are directly comparable;
+            # Bin_index is the bin's species index in the gas-phase scheme, Bin_name
+            # its resolved species name. None when the mechanism has no soot bins.
+            self.dfSootProperties = self._build_soot_properties_dataframe()
+
+    def _require_kinetics(self, method_name: str) -> None:
+        if self.km is None:
+            raise RuntimeError(
+                "{}() needs a kinetic mechanism, but this PostProcessor was built "
+                "without one (kineticFolder=None). Build with a kineticFolder to use "
+                "it.".format(method_name)
+            )
+
+    def _require_output(self, method_name: str) -> None:
+        if not self.db.hasOutput():
+            raise RuntimeError(
+                "{}() needs simulation output, but this PostProcessor was built "
+                "without one (outputFolder=None). Build with an outputFolder, or "
+                "call updateOutput(...), to use it.".format(method_name)
+            )
+
+    def updateOutput(self, outputFolder: str) -> None:
+        """
+        Re-points this PostProcessor at a different Output.xml under the same
+        mechanism, without re-parsing kinetics - for the common case of one
+        kinetic mechanism run against many Output folders.
+
+        Requires an output to already be loaded (outputFolder was given to
+        __init__, or a previous updateOutput call succeeded); use
+        PostProcessor(kineticFolder, outputFolder) for the first load.
+        """
+        self._require_output("updateOutput")
+        self.db.updateOutput(outputFolder)
+        self.outputFolder = outputFolder
+
+    def getSpeciesProfile(self, name: str, basis: str = "mass", as_dataframe: bool = False):
+        """
+        (independent_variable, profile) for one species, read straight from
+        Output.xml - no kinetics.xml dependency (Output.xml already carries each
+        species' own MW, used for the mass<->mole conversion).
+
+        Args:
+            name: species name.
+            basis: "mass" or "moles".
+            as_dataframe: return a single-column DataFrame indexed by the
+                independent variable instead of the (x, y) tuple.
+        """
+        self._require_output("getSpeciesProfile")
+        x, y = self.db.getSpeciesProfile(name, basis)
+        if as_dataframe:
+            return pd.DataFrame({name: y}, index=np.array(x))
+        return np.array(x), np.array(y)
+
+    def getIndependentVariableProfile(self, as_dataframe: bool = False):
+        """Time for a reactor, the axial/spatial coordinate for a flame - whichever
+        OpenSMOKEpp wrote as the first <additional> column of this Output.xml."""
+        self._require_output("getIndependentVariableProfile")
+        x = np.array(self.db.getIndependentVariableProfile())
+        if as_dataframe:
+            return pd.DataFrame({"x": x})
+        return x
+
+    def _getAdditionalProfile(self, key: str, as_dataframe: bool = False):
+        """Shared implementation behind the named profile getters below - not meant
+        to be called directly with an arbitrary column name, callers should not need
+        to know the <additional> column names Output.xml happens to use."""
+        self._require_output(key)
+        x = self.getIndependentVariableProfile()
+        y = np.array(self.db.additionalProfile(key))
+        if as_dataframe:
+            return pd.DataFrame({key: y}, index=x)
+        return x, y
+
+    def getTemperatureProfile(self, as_dataframe: bool = False):
+        return self._getAdditionalProfile("temperature", as_dataframe)
+
+    def getPressureProfile(self, as_dataframe: bool = False):
+        return self._getAdditionalProfile("pressure", as_dataframe)
+
+    def getDensityProfile(self, as_dataframe: bool = False):
+        return self._getAdditionalProfile("density", as_dataframe)
+
+    def getViscosityProfile(self, as_dataframe: bool = False):
+        return self._getAdditionalProfile("viscosity", as_dataframe)
+
+    def getFvSootProfile(self, as_dataframe: bool = False):
+        return self._getAdditionalProfile("fvSoot", as_dataframe)
+
+    def getYSootProfile(self, as_dataframe: bool = False):
+        return self._getAdditionalProfile("YSoot", as_dataframe)
 
     def _build_soot_properties_dataframe(self):
         s = self.soot
         if not s.sootAvailable():
             return None
-        species = self.km.species
+        species = self.km.speciesNames()
         names = [species[i] if 0 <= i < len(species) else None for i in s.index()]
         return pd.DataFrame(
             {
@@ -102,7 +221,8 @@ class PostProcessor:
             the free primary particles (numPP == 1) - the classic PPSD - and
             ignores min_section.
         diameter_type: "dmob" mobility diameter dm = Dpp*numPP**mobility_exponent,
-            "dpp" primary-particle diameter, "dcol" collision diameter.
+            "dpp" primary-particle diameter, "dcol" collision diameter,
+            "dva" volume-equivalent sphere diameter.
         local_value picks the profile point like local ROPA (first point whose
             abscissa >= local_value; abscissa is time for a reactor, a coordinate
             for a flame).
@@ -163,7 +283,7 @@ class PostProcessor:
 
         if two_dimensions is False:
             widget = ROPA()
-            widget.setDataBase(self.db)
+            widget.setResults(self.db)
             widget.setROPAType(ropa_type)
             widget.setSpecies(species)
             widget.setLocalValue(local_value)
@@ -177,7 +297,7 @@ class PostProcessor:
 
             reaction_names = None
             if include_names:
-                reaction_names = [self.km.ReactionNameFromIndex(i) for i in reaction_indices]
+                reaction_names = [self.km.formattedReactionNameFromIndex(i) for i in reaction_indices]
 
             if mass_ropa:
                 ropa_coefficients = self.convert_tomass(ropa_coefficients, species)
@@ -227,7 +347,7 @@ class PostProcessor:
         """
 
         widget = ROPA_Surface()
-        widget.setDataBase(self.db)
+        widget.setResults(self.db)
         widget.setROPAType(ropa_type)
         widget.setROPAPhase(heterogeneous_reactions)
         widget.setSpecies(species)
@@ -241,8 +361,8 @@ class PostProcessor:
         ropa_coefficients = widget.coefficients()
         reaction_names = None
         if include_names:
-            name_lookup = self.kms.ReactionNameFromIndex if heterogeneous_reactions else self.km.ReactionNameFromIndex
-            reaction_names = [name_lookup(i) for i in reaction_indices]
+            kinmap = self.kmhet if heterogeneous_reactions else self.km
+            reaction_names = [kinmap.formattedReactionNameFromIndex(i) for i in reaction_indices]
 
         # if mass_ropa:
         #     ropa_coefficients = self.convert_tomass(ropa_coefficients, species)
@@ -264,7 +384,7 @@ class PostProcessor:
         mass_ropa: bool = False,
     ) -> dict:
         widget = ROPA()
-        widget.setDataBase(self.db)
+        widget.setResults(self.db)
         widget.setROPAType(ropa_type)
         widget.setSpecies(species)
         widget.setLocalValue(0)
@@ -293,7 +413,7 @@ class PostProcessor:
 
         reaction_names = []
         for i in reaction_indices:
-            reaction_names.append(self.km.ReactionNameFromIndex(i))
+            reaction_names.append(self.km.formattedReactionNameFromIndex(i))
 
         if mass_ropa:
             ropa_coefficients = self.convert_tomass(ropa_coefficients, species)
@@ -320,7 +440,7 @@ class PostProcessor:
         # SENSITIVITY HERE
         widget = Sensitivity()
 
-        widget.setDataBase(self.db)
+        widget.setResults(self.db)
         widget.setSensitivityType(sensitivity_type)
         widget.setOrderingType(ordering_type)
         widget.setNormalizationType(normalization_type)
@@ -337,7 +457,7 @@ class PostProcessor:
 
         reaction_names = []
         for i in reaction_indices:
-            reaction_names.append(self.km.ReactionNameFromIndex(i))
+            reaction_names.append(self.km.formattedReactionNameFromIndex(i))
 
         sensitivity_result = {
             "coefficients": sensitivity_coefficients,
@@ -346,7 +466,7 @@ class PostProcessor:
         }
 
         return sensitivity_result
-    
+
     def SensitivityAnalysis_Surface(
         self,
         target: str,
@@ -359,9 +479,9 @@ class PostProcessor:
         number_of_reactions: int = 10,
         heterogeneous_sensitivity: bool = False
     ) -> dict:
-        widget = Sensitivity_Surface()
+        widget = Sensitivity()
 
-        widget.setDataBase(self.db)
+        widget.setResults(self.db)
         widget.setSensitivityType(sensitivity_type)
         widget.setOrderingType(ordering_type)
         widget.setNormalizationType(normalization_type)
@@ -369,7 +489,7 @@ class PostProcessor:
         widget.setLocalValue(local_value)
         widget.setLowerBound(lower_value)
         widget.setUpperBound(upper_value)
-        widget.prepare(heterogeneous_sensitivity)
+        widget.prepare(Phase.Surface if heterogeneous_sensitivity else Phase.Gas)
         widget.readSensitivityCoefficients()
         widget.sensitivityAnalysis(number_of_reactions)
 
@@ -378,10 +498,8 @@ class PostProcessor:
 
         reaction_names = []
         for i in reaction_indices:
-            if heterogeneous_sensitivity:
-                reaction_names.append(self.kms.ReactionNameFromIndex(i))
-            else:
-                reaction_names.append(self.km.ReactionNameFromIndex(i))
+            kinmap = self.kmhet if heterogeneous_sensitivity else self.km
+            reaction_names.append(kinmap.formattedReactionNameFromIndex(i))
 
         sensitivity_result = {
             "coefficients": sensitivity_coefficients,
@@ -406,7 +524,7 @@ class PostProcessor:
     ):
         widget = ROPA()
 
-        widget.setDataBase(self.db)
+        widget.setResults(self.db)
         widget.setSpecies(species)
         widget.setElement(element)
         widget.setFluxAnalysisType(flux_analysis_type)
@@ -428,8 +546,8 @@ class PostProcessor:
         firstNames = []
         secondNames = []
         for i, j in enumerate(indexFirstName):
-            firstNames.append(self.km.SpeciesNameFromIndex(j))
-            secondNames.append(self.km.SpeciesNameFromIndex(indexSecondName[i]))
+            firstNames.append(self.km.speciesNameFromIndex(j))
+            secondNames.append(self.km.speciesNameFromIndex(indexSecondName[i]))
         Graph = GraphWriter(flux_analysis_type)  # , species, element)
         Graph = Graph.CreateGraph(firstNames, secondNames, computedThickness, computedLabel)
 
@@ -439,11 +557,11 @@ class PostProcessor:
         """
         Builds the C++ SpeciesClass widget.
         The <SpeciesClasses> block inside kinetics.xml is optional,
-        This function is an intermediate to raise a clear python error 
+        This function is an intermediate to raise a clear python error
         instead of core-dumping as soon as the block is not found.
         """
         widget = SpeciesClass()
-        widget.setDataBase(self.db)
+        widget.setResults(self.db)
         if not widget.speciesClassesAvailable():
             raise Exception(
                 "The kinetic mechanism does not contain a <SpeciesClasses> block."
@@ -472,6 +590,26 @@ class PostProcessor:
         class_names = widget.classNames()
         fractions = np.array(widget.elementalFractions(), dtype=np.float64)  # [class][point]
         return pd.DataFrame(fractions.T, index=np.array(widget.abscissa()), columns=class_names)
+
+    def ElementMolesBySpecies(self, element: str) -> pd.DataFrame:
+        """
+        Per-species (not per-class) moles-of-element-per-unit-mass-of-mixture along
+        the independent variable - every species in the mechanism, classified or
+        not. Shares its C++ numeric core with ElementalDistributionByClass (which
+        aggregates this same computation by class); this is the per-species view
+        elements_balance needs for its lumping/threshold logic. Does not require a
+        <SpeciesClasses> block.
+
+        Returns:
+            DataFrame indexed by the independent variable, one column per species.
+        """
+        widget = SpeciesClass()
+        widget.setResults(self.db)
+        widget.elementMolesBySpecies(element)
+
+        species_names = widget.speciesNames()
+        moles = np.array(widget.elementMolesBySpeciesMatrix(), dtype=np.float64)  # [species][point]
+        return pd.DataFrame(moles.T, index=np.array(widget.abscissa()), columns=species_names)
 
     def FluxAnalysisByClass(
         self,
@@ -551,7 +689,7 @@ class PostProcessor:
                 raise ValueError(
                     "flux_per_class=False requires 'species_name' and no 'class_name'"
                 )
-            if species_name not in self.km.species:
+            if species_name not in self.km.speciesNames():
                 raise ValueError(
                     "species_name '{}' is not in the mechanism".format(species_name)
                 )
@@ -586,17 +724,17 @@ class PostProcessor:
     def GetReactionRates(self, reaction_name: list = None, reaction_index: list = None, sum_rates: bool = False, heterogeneous_reactions = False):
         if reaction_name is not None:
             if not heterogeneous_reactions: # If homogeneous, it will be false anyway
-                reaction_index = [self.km.ReactionIndexFromName(name=i) for i in reaction_name]
+                reaction_index = [self.km.reactionIndexFromName(name=i) for i in reaction_name]
             else:
-                reaction_index = [self.kms.ReactionIndexFromName(name=i) for i in reaction_name]
+                reaction_index = [self.kmhet.reactionIndexFromName(name=i) for i in reaction_name]
 
         if not self.isHeterogeneous:
             widget = ROPA()
-            widget.setDataBase(self.db)
+            widget.setResults(self.db)
             widget.getReactionRates(reaction_index, sum_rates)
         else:
             widget = ROPA_Surface()
-            widget.setDataBase(self.db)
+            widget.setResults(self.db)
             widget.getReactionRates(reaction_index, sum_rates,heterogeneous_reactions)
 
         if sum_rates:
@@ -609,7 +747,7 @@ class PostProcessor:
     def GetFormationRates(self, formation_rate_type: str, species: str, units: str = "mole"):
         # TODO @lgiardini implement this in the hpp and update for surface reactions
         widget = ROPA()
-        widget.setDataBase(self.db)
+        widget.setResults(self.db)
         widget.getFormationRates(species, units, formation_rate_type)
         formationRates = widget.formationRates()
 
@@ -625,10 +763,10 @@ class PostProcessor:
         reaction_index: int = None,
     ):
         if reaction_name is not None:
-            reaction_index = self.km.ReactionIndexFromName(name=reaction_name)
+            reaction_index = self.km.reactionIndexFromName(name=reaction_name)
 
         widget = Sensitivity()
-        widget.setDataBase(self.db)
+        widget.setResults(self.db)
         widget.setSensitivityType("global")
         widget.setOrderingType("peak-values")
         widget.setNormalizationType(normalization_type)
@@ -654,8 +792,8 @@ class PostProcessor:
         Returns:
             list containing the rate of production coefficients in mass unit.
         """
-        sp_idx = self.km.IndexFromSpeciesName(species)
-        mwi = self.km.mws[sp_idx]
+        sp_idx = self.km.speciesIndexFromName(species)
+        mwi = self.km.mw(sp_idx)
         ropa_coefficients = [c * mwi for c in ropa_coefficients]
 
         return ropa_coefficients

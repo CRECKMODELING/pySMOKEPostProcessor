@@ -119,63 +119,73 @@ install(
     RUNTIME DESTINATION .
 )
 
-# add_executable(sensitivity_het
-#     ${CMAKE_CURRENT_LIST_DIR}/testfiles/sensitivity_het.cpp
-# )
+# -----------------------------------------------------------------------------
+# Standalone testfiles/*.cpp drivers (PYSMOKE_BUILD_TESTFILES, off by default)
+# -----------------------------------------------------------------------------
+# Bypass pybind entirely (no BUILD_PYTHON_BINDINGS define, so
+# PostProcessorWrapper_py.h's pybind11 includes are skipped) - the fast
+# iteration loop for the C++ backend used while refactoring it. Fixture data
+# path is baked in via PYSMOKE_EXAMPLES_DATA_DIR instead of the hardcoded
+# per-machine absolute paths the drivers used to carry, so they work from any
+# checkout regardless of the current working directory.
+if(PYSMOKE_BUILD_TESTFILES)
+  set(PYSMOKE_TESTFILES
+      ropa_homo
+      ropa_het
+      sensitivity_homo
+      sensitivity_het
+      speciesclass_homo
+      outputreader_homo
+      kineticmapreader_gas
+      kineticmapreader_surface
+      kineticmapreader_liquid
+      kineticmapreader_solid
+      postprocessorcore_construction
+      ropa_liquid_structural
+  )
 
-# target_include_directories(sensitivity_het
-#     PRIVATE
-#         ${OPENSMOKE_INCLUDE}
-#         ${CMAKE_CURRENT_LIST_DIR}/source
-# )
+  foreach(_test_name ${PYSMOKE_TESTFILES})
+    add_executable(${_test_name} ${CMAKE_CURRENT_LIST_DIR}/testfiles/${_test_name}.cpp)
 
-# if(TARGET Boost::headers)
-#     target_link_libraries(sensitivity_het
-#         PRIVATE
-#             Eigen3::Eigen
-#             Boost::headers
-#     )
+    target_include_directories(${_test_name}
+        PRIVATE
+            ${OPENSMOKE_INCLUDE}
+            ${CMAKE_CURRENT_LIST_DIR}/source
+    )
 
-#     if(BOOST_FILESYSTEM_LIB)
-#         target_link_libraries(sensitivity_het PRIVATE ${BOOST_FILESYSTEM_LIB})
-#     endif()
+    target_compile_definitions(${_test_name}
+        PRIVATE PYSMOKE_EXAMPLES_DATA_DIR="${CMAKE_SOURCE_DIR}/examples/data"
+    )
 
-#     if(BOOST_SYSTEM_LIB)
-#         target_link_libraries(sensitivity_het PRIVATE ${BOOST_SYSTEM_LIB})
-#     endif()
+    target_link_libraries(${_test_name} PRIVATE Eigen3::Eigen)
 
-# elseif(TARGET Boost::boost)
-
-#     target_link_libraries(sensitivity_het
-#         PRIVATE
-#             Eigen3::Eigen
-#             Boost::boost
-#     )
-
-#     if(BOOST_FILESYSTEM_LIB)
-#         target_link_libraries(sensitivity_het PRIVATE ${BOOST_FILESYSTEM_LIB})
-#     endif()
-
-#     if(BOOST_SYSTEM_LIB)
-#         target_link_libraries(sensitivity_het PRIVATE ${BOOST_SYSTEM_LIB})
-#     endif()
-
-# else()
-
-#     target_link_libraries(sensitivity_het
-#         PRIVATE
-#             Eigen3::Eigen
-#             Boost::date_time
-#             Boost::filesystem
-#             Boost::program_options
-#             Boost::system
-#             Boost::regex
-#             Boost::timer
-#             Boost::chrono
-#     )
-
-# endif()
-
-# target_compile_definitions(sensitivity_het
-#     PRIVATE NO_PYTHON_BINDINGS
-# )
+    if(TARGET Boost::headers)
+        target_link_libraries(${_test_name} PRIVATE Boost::headers)
+        if(BOOST_FILESYSTEM_LIB)
+            target_link_libraries(${_test_name} PRIVATE ${BOOST_FILESYSTEM_LIB})
+        endif()
+        if(BOOST_SYSTEM_LIB)
+            target_link_libraries(${_test_name} PRIVATE ${BOOST_SYSTEM_LIB})
+        endif()
+    elseif(TARGET Boost::boost)
+        target_link_libraries(${_test_name} PRIVATE Boost::boost)
+        if(BOOST_FILESYSTEM_LIB)
+            target_link_libraries(${_test_name} PRIVATE ${BOOST_FILESYSTEM_LIB})
+        endif()
+        if(BOOST_SYSTEM_LIB)
+            target_link_libraries(${_test_name} PRIVATE ${BOOST_SYSTEM_LIB})
+        endif()
+    else()
+        target_link_libraries(${_test_name}
+            PRIVATE
+                Boost::date_time
+                Boost::filesystem
+                Boost::program_options
+                Boost::system
+                Boost::regex
+                Boost::timer
+                Boost::chrono
+        )
+    endif()
+  endforeach()
+endif()
