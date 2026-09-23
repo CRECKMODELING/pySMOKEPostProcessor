@@ -172,11 +172,70 @@ class PostProcessor:
     def getViscosityProfile(self, as_dataframe: bool = False):
         return self._getAdditionalProfile("viscosity", as_dataframe)
 
-    def getFvSootProfile(self, as_dataframe: bool = False):
-        return self._getAdditionalProfile("fvSoot", as_dataframe)
+    def getFvSootProfile(self, as_dataframe: bool = False, min_section: int = 5):
+        """Soot volume fraction [-] along the abscissa.
+        Needs a <SootProperties> block."""
+        with np.errstate(divide="ignore"):
+            specific_volume = 1.0 / np.array(self.soot.density())  # m3/kg
+        df = self._getAveragedSootProfile(
+            "1/rho_soot[m3/kg]", specific_volume, True, min_section, "mass"
+        )
+        mass = df["soot_mass[kg/m3]"].to_numpy()
+        has_soot = mass > 0.0
+        fv = np.zeros_like(mass)
+        fv[has_soot] = df["1/rho_soot[m3/kg]"].to_numpy()[has_soot] * mass[has_soot]
+        x = df.index.to_numpy()
+        if as_dataframe:
+            return pd.DataFrame({"fv[-]": fv, "soot_mass[kg/m3]": mass}, index=x)
+        return x, fv
 
     def getYSootProfile(self, as_dataframe: bool = False):
         return self._getAdditionalProfile("YSoot", as_dataframe)
+
+    def getSSASootProfile(self, as_dataframe: bool = False, min_section: int = 5):
+        """Mean soot specific surface area [m2/kg] along the abscissa, mass-weighted
+        over the BINs with Bin_section >= min_section (total soot surface / total
+        soot mass), each BIN having SSA = pi*Dpp**2*numPP/Bin_mass (numPP <= 0
+        counted as 1). NaN where there is no soot. Needs a <SootProperties> block."""
+        return self._getAveragedSootProfile(
+            "SSA[m2/kg]", self.soot.ssa(min_section), as_dataframe, min_section, "mass"
+        )
+
+    def _getAveragedSootProfile(
+        self,
+        key: str,
+        prop,
+        as_dataframe: bool = False,
+        min_section: int = 5,
+        weighting: str = "mass",
+    ):
+        """Shared implementation behind the averaged soot getters: `prop` is a
+        per-BIN property (one value per BIN, e.g. self.soot.htoc()), averaged along
+        the abscissa over the BINs with Bin_section >= min_section. weighting="mass"
+        weighs each BIN by its soot mass, "carbon" by its moles of carbon. NaN where
+        there is no soot.
+        Note: default weighting should be 'carbon' only for H/C ratio
+        """
+        self._require_output(key)
+        cols = self.soot.averagedProfile(prop, min_section, weighting)
+        x = np.array(cols["abscissa"])
+        y = np.array(cols["mean"])
+        if as_dataframe:
+            return pd.DataFrame(
+                {key: y, "soot_mass[kg/m3]": np.array(cols["mass_kg_per_m3"])}, index=x
+            )
+        return x, y
+
+    def getHtoCSootProfile(
+        self, as_dataframe: bool = False, min_section: int = 5, weighting: str = "mass"
+    ):
+        """Mean soot H/C [-] along the abscissa over the BINs with
+        Bin_section >= min_section. weighting="mass" is the mass-weighted mean of the
+        per-BIN H/C; "carbon" gives exactly total H atoms / total C atoms. Needs a
+        <SootProperties> block."""
+        return self._getAveragedSootProfile(
+            "H/C[-]", self.soot.htoc(), as_dataframe, min_section, weighting
+        )
 
     def _build_soot_properties_dataframe(self):
         s = self.soot
@@ -201,6 +260,7 @@ class PostProcessor:
                 "Dpp[m]": list(s.dpp()),
                 "Df[-]": list(s.df()),
                 "numPP[#]": list(s.numpp()),
+                "SSA[m2/kg]": list(s.ssa()),
                 "Bin_section": list(s.section()),
             }
         )
@@ -217,9 +277,8 @@ class PostProcessor:
         """Soot particle size distribution.
 
         particle_type: "all" keeps every BIN with Bin_section >= min_section
-            (numPP <= 0 nascent bins counted as one spherule); "primary" keeps only
-            the free primary particles (numPP == 1) - the classic PPSD - and
-            ignores min_section.
+            (numPP <= 0 nascent bins counted as one spherule); 
+            "primary" keeps only the primary particles (PPSD).
         diameter_type: "dmob" mobility diameter dm = Dpp*numPP**mobility_exponent,
             "dpp" primary-particle diameter, "dcol" collision diameter,
             "dva" volume-equivalent sphere diameter.

@@ -1,28 +1,7 @@
-"""DataFrame + plotting front-end for the C++ soot size distribution.
-
-The maths lives in cxx_wrapper/source/Soot.hpp (``Soot::ParticleSizeDistribution``),
-which reads the BIN properties *and* the state profiles straight from the same
-ProfilesDatabase every other analysis uses - no Output.xml re-read. Here we only
-shape the returned column dict into a DataFrame and offer a plot helper.
-
-One distribution, a few knobs:
-
-* ``particle_type`` - ``"all"`` keeps every BIN with ``Bin_section >= min_section``
-  (numPP <= 0 nascent bins count as one spherule); ``"primary"`` keeps only the
-  free primary particles (numPP == 1), and ignores ``min_section``.
-* ``diameter_type`` - ``"dmob"`` mobility diameter dm = Dpp * numPP**exponent,
-  ``"dpp"`` primary-particle diameter, ``"dcol"`` collision diameter,
-  ``"dva"`` volume-equivalent sphere diameter.
-
-``local_value`` selects the profile point like local ROPA does (first point whose
-abscissa >= local_value); the abscissa is time for a reactor, a coordinate for a
-flame. The gas state actually used lands in ``df.attrs``.
-"""
-
 import pandas as pd
 
 # plotting lives with the other plot helpers; re-exported here for convenience.
-from ..plotting_utilities.psd_plot import plot_distribution  # noqa: F401
+from ..plotting_utilities.plot_distributions import plot_distribution
 
 _DIAMETER_SYMBOL = {"dmob": "dm", "dpp": "dpp", "dcol": "dcol", "dva": "dva"}
 
@@ -32,13 +11,13 @@ _COLUMN_ORDER = [
 ]
 
 _RAW_TO_PRETTY = {
-    "d_nm": "{d}[nm]",
-    "d_min_nm": "{d}_min[nm]",
-    "d_max_nm": "{d}_max[nm]",
+    "x": "{d}[nm]",
+    "x_min": "{d}_min[nm]",
+    "x_max": "{d}_max[nm]",
     "N_per_m3": "N[#/m3]",
     "n_bins": "n_bins",
-    "Dlog10_d": "Dlog10({d}[nm])",
-    "dN_dlog10_d_per_m3": "dN/dlog10({d}[nm])[#/m3]",
+    "Dlog10_x": "Dlog10({d}[nm])",
+    "dN_dlog10_x_per_m3": "dN/dlog10({d}[nm])[#/m3]",
 }
 
 

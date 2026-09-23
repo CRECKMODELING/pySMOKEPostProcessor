@@ -9,34 +9,27 @@ resultsFolder = os.path.join("..", "data", "Soot-01", "Output")
 
 pp = PostProcessor(kineticFolder, resultsFolder)
 
-# ---------------------------------------------------------------------------
-# 1) The full <SootProperties> block, one row per BIN. Column names match
-#    OpenSMOKE's BinProperties.txt; Bin_index / Bin_name tie each BIN back to
-#    its gas-phase species.
-# ---------------------------------------------------------------------------
+# 1) BinProperties can be accessed directly as a pandas.DataFrame
 props = pp.dfSootProperties
 print(props.head(6).to_string())
 print(f"... {len(props)} BINs, sections {props['Bin_section'].min()}"
       f"-{props['Bin_section'].max()}\n")
 
 # ---------------------------------------------------------------------------
-# 2) Particle size distribution at a chosen abscissa location. One function,
-#    two knobs:
+# 2) Particle size distribution at a chosen location
 #      particle_type = "all"     -> every BIN with Bin_section >= min_section
-#                      "primary" -> free primary particles (numPP == 1)  [PPSD]
+#                      "primary" -> only primary particles (numPP == 1) [PPSD]
 #      diameter_type = "dmob" -> mobility, dm = Dpp * numPP**mobility_exponent
-#                      "dpp"  -> primary-particle diameter (straight from XML)
-#                      "dcol" -> collision diameter (straight from XML)
-#                      "dva"  -> volume-equivalent sphere diameter (straight from XML)
-#    local_value picks the profile point like local ROPA (first point whose
-#    abscissa >= local_value); the gas state used is in df.attrs.
+#                      "dpp"  -> primary-particle diameter
+#                      "dcol" -> collision diameter
+#                      "dva"  -> volume-equivalent sphere diameter
+#    local_value picks the profile point like local ROPA
 # ---------------------------------------------------------------------------
-local_value = 0.35  # s - near peak soot for this batch-reactor fixture
+local_value = 0.35  # cm - near peak soot
 
-# Same particle population ("all"), four size coordinates. Only "dmob" applies
+# Same particle population ("all"). Only "dmob" applies
 # the aggregation transform Dpp * numPP**exp; "dpp"/"dcol"/"dva" read the BIN
-# property directly, so total N is identical - only the abscissa (and its
-# binning) moves.
+# property directly # TODO check that this is correct @PC
 psd = {}
 for diam in ("dmob", "dpp", "dcol", "dva"):
     psd[diam] = pp.SootPSD(local_value=local_value, particle_type="all",
@@ -48,25 +41,20 @@ for diam in ("dmob", "dpp", "dcol", "dva"):
           f"{size_col} {df[size_col].min():.3g}-{df[size_col].max():.4g} nm, "
           f"total N = {df['N[#/m3]'].sum():.3e} #/m3")
 
-print()
-print("mobility PSD (all / dmob):")
-print(psd["dmob"].to_string(), "\n")
-
-# Free primary particles only (numPP == 1) - the classic PPSD, on Dpp.
+# Primary particles only (numPP == 1) - the classic PPSD, on Dpp.
 ppsd = pp.SootPSD(local_value=local_value, particle_type="primary",
                   diameter_type="dpp")
-print(f"PPSD (primary / dpp) @ abscissa = {ppsd.attrs['abscissa']:.4g}")
-print(ppsd.to_string(), "\n")
 
 # ---------------------------------------------------------------------------
-# 3) Plot the four "all" size coordinates on one axes.
+# 3) Comparison between different diameter calculation method
 # ---------------------------------------------------------------------------
 fig, ax = plt.subplots(figsize=(7.2, 5.0))
 for diam, style in zip(("dmob", "dpp", "dcol", "dva"), ("-o", "-s", "-^", "-d")):
-    plot_distribution(psd[diam], ax=ax, label=f"all / {diam}", linestyle=style[0],
+    plot_distribution(psd[diam], ax=ax, label=f"{diam}", linestyle=style[0],
                       marker=style[1])
-ax.set_xlabel("particle diameter [nm]")
-ax.set_title("Soot PSD - mobility vs primary vs collision vs volume-equivalent diameter")
+ax.set_xlabel("Particle diameter [nm]")
+ax.set_title("Soot PSD")
+ax.set_ylabel(r"$dN/d\log_{10}(d_m)$ [m$^{-3}$]")
 ax.legend()
 fig.tight_layout()
 # fig.savefig("SootPSD.png", dpi=200, bbox_inches="tight")

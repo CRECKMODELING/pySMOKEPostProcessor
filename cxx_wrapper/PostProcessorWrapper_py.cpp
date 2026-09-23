@@ -4,6 +4,9 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "source/classes/ReactionClasses.h"
+#include "source/classes/Soot.h"
+#include "source/classes/SpeciesClasses.h"
 #include "source/core/KineticMapReaderBase.h"
 #include "source/core/KineticMapReader_Gas.h"
 #include "source/core/KineticMapReader_Liquid.h"
@@ -14,9 +17,6 @@
 #include "source/ropa/ROPA_Liquid.h"
 #include "source/ropa/ROPA_Surface.h"
 #include "source/sensitivity/SensitivityReader.h"
-#include "source/classes/ReactionClasses.h"
-#include "source/classes/SpeciesClasses.h"
-#include "source/classes/Soot.h"
 
 namespace py = pybind11;
 constexpr auto byref = py::return_value_policy::reference_internal;
@@ -44,8 +44,9 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
            py::call_guard<py::gil_scoped_release>())
       .def("reactionNameFromIndex", &KineticMapReaderBase::ReactionNameFromIndex,
            py::arg("index"), py::call_guard<py::gil_scoped_release>())
-      .def("formattedReactionNameFromIndex", &KineticMapReaderBase::FormattedReactionNameFromIndex,
-           py::arg("index"), py::call_guard<py::gil_scoped_release>())
+      .def("formattedReactionNameFromIndex",
+           &KineticMapReaderBase::FormattedReactionNameFromIndex, py::arg("index"),
+           py::call_guard<py::gil_scoped_release>())
       .def("speciesNameFromIndex", &KineticMapReaderBase::SpeciesNameFromIndex,
            py::arg("index"), py::call_guard<py::gil_scoped_release>())
       .def("reactionIndexFromName", &KineticMapReaderBase::ReactionIndexFromName,
@@ -64,8 +65,8 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
            py::call_guard<py::gil_scoped_release>())
       .def("speciesToClass", &KineticMapReaderBase::SpeciesToClass,
            py::call_guard<py::gil_scoped_release>())
-      .def("speciesClassOf", &KineticMapReaderBase::SpeciesClassOf, py::arg("species_name"),
-           py::call_guard<py::gil_scoped_release>())
+      .def("speciesClassOf", &KineticMapReaderBase::SpeciesClassOf,
+           py::arg("species_name"), py::call_guard<py::gil_scoped_release>())
       .def("hasReactionClasses", &KineticMapReaderBase::HasReactionClasses,
            py::call_guard<py::gil_scoped_release>())
       .def("reactionMainClass", &KineticMapReaderBase::ReactionMainClass,
@@ -85,23 +86,32 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
   // converted to scipy.sparse automatically by pybind11/eigen.h - replaces the
   // from-scratch pySMOKEPostProcessor/maps/StoichiometricMap.py.
   py::class_<KineticMapReader_Gas, KineticMapReaderBase>(m, "KineticMapReader_Gas")
-      .def("stoichiometricMatrixReactants", &KineticMapReader_Gas::StoichiometricMatrixReactants,
+      .def("stoichiometricMatrixReactants",
+           &KineticMapReader_Gas::StoichiometricMatrixReactants,
            py::call_guard<py::gil_scoped_release>())
-      .def("stoichiometricMatrixProducts", &KineticMapReader_Gas::StoichiometricMatrixProducts,
+      .def("stoichiometricMatrixProducts",
+           &KineticMapReader_Gas::StoichiometricMatrixProducts,
            py::call_guard<py::gil_scoped_release>())
-      .def("reactionOrdersMatrixReactants", &KineticMapReader_Gas::ReactionOrdersMatrixReactants,
+      .def("reactionOrdersMatrixReactants",
+           &KineticMapReader_Gas::ReactionOrdersMatrixReactants,
            py::call_guard<py::gil_scoped_release>())
-      .def("reactionOrdersMatrixProducts", &KineticMapReader_Gas::ReactionOrdersMatrixProducts,
+      .def("reactionOrdersMatrixProducts",
+           &KineticMapReader_Gas::ReactionOrdersMatrixProducts,
            py::call_guard<py::gil_scoped_release>());
 
-  py::class_<KineticMapReader_Surface, KineticMapReaderBase>(m, "KineticMapReader_Surface")
-      .def("stoichiometricMatrixReactants", &KineticMapReader_Surface::StoichiometricMatrixReactants,
+  py::class_<KineticMapReader_Surface, KineticMapReaderBase>(m,
+                                                             "KineticMapReader_Surface")
+      .def("stoichiometricMatrixReactants",
+           &KineticMapReader_Surface::StoichiometricMatrixReactants,
            py::call_guard<py::gil_scoped_release>())
-      .def("stoichiometricMatrixProducts", &KineticMapReader_Surface::StoichiometricMatrixProducts,
+      .def("stoichiometricMatrixProducts",
+           &KineticMapReader_Surface::StoichiometricMatrixProducts,
            py::call_guard<py::gil_scoped_release>())
-      .def("reactionOrdersMatrixReactants", &KineticMapReader_Surface::ReactionOrdersMatrixReactants,
+      .def("reactionOrdersMatrixReactants",
+           &KineticMapReader_Surface::ReactionOrdersMatrixReactants,
            py::call_guard<py::gil_scoped_release>())
-      .def("reactionOrdersMatrixProducts", &KineticMapReader_Surface::ReactionOrdersMatrixProducts,
+      .def("reactionOrdersMatrixProducts",
+           &KineticMapReader_Surface::ReactionOrdersMatrixProducts,
            py::call_guard<py::gil_scoped_release>());
 
   // Liquid/Solid: structurally verified only (no fixture data), same caveat as
@@ -115,8 +125,7 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
       .def("loadKinetics", &PostProcessorCore::LoadKinetics,
            py::arg("folder_name") = "kinetics", py::call_guard<py::gil_scoped_release>())
       .def("readFileResults", &PostProcessorCore::ReadOutput,
-           py::arg("folder_name") = "Output",
-           py::arg("isHeterogeneous") = false,
+           py::arg("folder_name") = "Output", py::arg("isHeterogeneous") = false,
            py::call_guard<py::gil_scoped_release>())
       .def("updateOutput", &PostProcessorCore::UpdateOutput, py::arg("folder_name"),
            py::call_guard<py::gil_scoped_release>())
@@ -133,14 +142,16 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
       .def("phase2Kinetics", &PostProcessorCore::phase2Kinetics, byref,
            py::call_guard<py::gil_scoped_release>())
       // --- OutputReader's read surface (kinetics-independent, see OutputReader.h) ---
-      .def("mwSpecies", &PostProcessorCore::mwSpecies, py::call_guard<py::gil_scoped_release>())
+      .def("mwSpecies", &PostProcessorCore::mwSpecies,
+           py::call_guard<py::gil_scoped_release>())
       .def("outputSpeciesNames", &PostProcessorCore::speciesNames,
            py::call_guard<py::gil_scoped_release>())
-      .def("outputSpeciesIndexFromName", &PostProcessorCore::SpeciesIndexFromName, py::arg("name"),
-           py::call_guard<py::gil_scoped_release>())
+      .def("outputSpeciesIndexFromName", &PostProcessorCore::SpeciesIndexFromName,
+           py::arg("name"), py::call_guard<py::gil_scoped_release>())
       .def("getSpeciesProfile", &PostProcessorCore::GetSpeciesProfile, py::arg("name"),
            py::arg("basis"), py::call_guard<py::gil_scoped_release>())
-      .def("getIndependentVariableProfile", &PostProcessorCore::GetIndependentVariableProfile,
+      .def("getIndependentVariableProfile",
+           &PostProcessorCore::GetIndependentVariableProfile,
            py::call_guard<py::gil_scoped_release>())
       .def("additionalProfile", &PostProcessorCore::AdditionalProfile, py::arg("key"),
            py::call_guard<py::gil_scoped_release>());
@@ -231,14 +242,13 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
            py::call_guard<py::gil_scoped_release>())
       .def("rateOfProductionAnalysis", &ROPA_Liquid::RateOfProductionAnalysis,
            py::arg("number_of_reactions") = 10, py::call_guard<py::gil_scoped_release>())
-      .def("getReactionRates", &ROPA_Liquid::GetReactionRates, py::arg("reaction_indices"),
-           py::arg("sum_rates") = false, py::call_guard<py::gil_scoped_release>())
+      .def("getReactionRates", &ROPA_Liquid::GetReactionRates,
+           py::arg("reaction_indices"), py::arg("sum_rates") = false,
+           py::call_guard<py::gil_scoped_release>())
       .def("getFormationRates", &ROPA_Liquid::GetFormationRates, py::arg("specie"),
            py::arg("units"), py::arg("type"), py::call_guard<py::gil_scoped_release>());
 
-  py::enum_<Phase>(m, "Phase")
-      .value("Gas", Phase::Gas)
-      .value("Surface", Phase::Surface);
+  py::enum_<Phase>(m, "Phase").value("Gas", Phase::Gas).value("Surface", Phase::Surface);
 
   py::class_<SensitivityReader>(m, "Sensitivity")
       .def(py::init<>())
@@ -283,8 +293,8 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
       .def("elementalDistribution", &SpeciesClass::ElementalDistribution,
            py::arg("element"), py::arg("normalize") = false,
            py::call_guard<py::gil_scoped_release>())
-      .def("elementMolesBySpecies", &SpeciesClass::ElementMolesBySpecies, py::arg("element"),
-           py::call_guard<py::gil_scoped_release>())
+      .def("elementMolesBySpecies", &SpeciesClass::ElementMolesBySpecies,
+           py::arg("element"), py::call_guard<py::gil_scoped_release>())
       .def("speciesNames", &SpeciesClass::speciesNames,
            py::call_guard<py::gil_scoped_release>())
       .def("elementMolesBySpeciesMatrix", &SpeciesClass::elementMolesBySpecies,
@@ -371,8 +381,7 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
            py::call_guard<py::gil_scoped_release>())
       .def("sootAvailable", &Soot::sootAvailable,
            py::call_guard<py::gil_scoped_release>())
-      .def("numberOfBins", &Soot::numberOfBins,
-           py::call_guard<py::gil_scoped_release>())
+      .def("numberOfBins", &Soot::numberOfBins, py::call_guard<py::gil_scoped_release>())
       .def("index", &Soot::index, py::call_guard<py::gil_scoped_release>())
       .def("section", &Soot::section, py::call_guard<py::gil_scoped_release>())
       .def("nc", &Soot::nc, py::call_guard<py::gil_scoped_release>())
@@ -391,5 +400,10 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
       .def("psd", &Soot::ParticleSizeDistribution, py::arg("local_value") = 0.0,
            py::arg("particle_type") = "all", py::arg("diameter_type") = "dmob",
            py::arg("min_section") = 5, py::arg("mobility_exponent") = 0.45,
-           py::arg("merge_tol") = 0.20, py::call_guard<py::gil_scoped_release>());
+           py::arg("merge_tol") = 0.20, py::call_guard<py::gil_scoped_release>())
+      .def("averagedProfile", &Soot::AveragedProfile, py::arg("property"),
+           py::arg("min_section") = 5, py::arg("weighting") = "mass",
+           py::call_guard<py::gil_scoped_release>())
+      .def("ssa", &Soot::SpecificSurfaceArea, py::arg("min_section") = 5,
+           py::call_guard<py::gil_scoped_release>());
 }
