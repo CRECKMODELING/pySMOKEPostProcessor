@@ -40,11 +40,11 @@
 #include <Eigen/Sparse>
 #include <unordered_map>
 
-// Reader for the file Output.xml: T/P/MW/species profiles, <additional> 
+// Reader for the file Output.xml: T/P/MW/species profiles, <additional>
 // columns, and species profiles.
-// ReadOutput/Prepare/PrepareHeterogeneous never touch anything from the 
+// ReadOutput/Prepare/PrepareHeterogeneous never touch anything from the
 // kinetics*.xml, which is what allows UpdateOutput to exist.
-// PostProcessors may be built using Output.xml only if profiles are the 
+// PostProcessors may be built using Output.xml only if profiles are the
 // required variable. It is recommended to build with kinetics anyway.
 class OutputReader {
  public:
@@ -68,7 +68,7 @@ class OutputReader {
   const std::vector<std::string>& speciesNames() const { return species_names_unsorted_; }
   int SpeciesIndexFromName(const std::string& name) const;
 
-  // Returns (independent_variable, profile) for one species. basis is "mass" or "moles"
+  // Returns (independent_variable, profile) for one species. basis is "mass" or "mole"
   // for mass fractions or mole fractions.
   std::pair<std::vector<double>, std::vector<double>> GetSpeciesProfile(
       const std::string& name, const std::string& basis) const;
@@ -127,17 +127,20 @@ class OutputReader {
   unsigned int number_of_surface_species;
   unsigned int number_of_bulk_species;
 
-  std::vector<double> mw_species_;  // Note: for now, saving only the gas-phase molecular weights.
-      // Since surface species are already saved in molar fractions, and bulk species are in mass,
-      // but their activity is 1, no need to save their MW (no use for it)
-      // Maybe, in different phases it is required to save those.
+  std::vector<double> mw_species_;  
+                // Note: for now, saving only the gas-phase molecular weights.
+                // Since surface species are already saved in molar fractions, and
+                // bulk species are in mass, but their activity is 1, no need to save
+                // their MW (no use for it) Maybe, in different phases it is required
+                // to save those.
 
   boost::property_tree::ptree xml_main_input;
 
   bool iSensitivityEnabled_;
   bool iSensitivityHeterogeneousEnabled_;
 
-  // Folder of kinetic mechanism and output are the same for heterogeneous mechanisms, no need to duplicate.
+  // Folder of kinetic mechanism and output are the same for heterogeneous mechanisms, 
+  // no need to duplicate.
   boost::filesystem::path path_folder_results_;
 
   // Remembered from the last ReadOutput call so UpdateOutput doesn't need the
@@ -152,6 +155,16 @@ class OutputReader {
   // is the *sorted* view used for display; this is the lookup-by-index one.
   std::vector<std::string> species_names_unsorted_;
   std::unordered_map<std::string, int> species_index_by_name_;
+
+  // Shared by Prepare()/PrepareHeterogeneous() - both start by reading the same
+  // <t-p-mw> leaf.
+  void ReadTPMW();
+
+  // Species sorting, moved to a function for reusability across
+  // Prepare and PrepareHeterogeneous
+  void SortAndIndexSpecies(const std::vector<std::string>& unsorted,
+                           std::vector<std::string>& sorted,
+                           std::vector<int>& sorted_index) const;
 };
 
 #include "OutputReader.hpp"

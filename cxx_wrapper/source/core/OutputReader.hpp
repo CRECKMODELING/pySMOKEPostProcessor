@@ -39,6 +39,20 @@ OutputReader::OutputReader(void) {
   index_density = -1;
   index_velocity = -1;
   index_mass_flow_rate = -1;
+  // Same "-1 (== UINT_MAX) means absent" sentinel as the three above - only set when the
+  // matching <additional> column exists (2D/3D flame profiles for x_coord/z_coord/volume,
+  // heterogeneous mechanisms for area_over_volume/surface_sites_concentration).
+  // Previously left uninitialized, so RateOfProductionAnalysis2D on a mechanism without
+  // x-coord/ z-coord/volume columns indexed `additional` with garbage and segfaulted.
+  // this was masked until now by the "ropa" binding name bug (see
+  // PostProcessorWrapper_py.cpp) making RateOfProductionAnalysis2D unreachable from
+  // Python at all. Explicit checks were added where these are read
+  // (ROPA::RateOfProductionAnalysis2D) to raise clearly instead.
+  index_x_coord = -1;
+  index_z_coord = -1;
+  index_volume = -1;
+  index_area_over_volume = -1;
+  index_surface_sites_concentration = -1;
 
   iSensitivityEnabled_ = false;
   iSensitivityHeterogeneousEnabled_ = false;
@@ -88,29 +102,45 @@ bool OutputReader::UpdateOutput(const std::string& folder_name) {
   if (!is_output_available_) {
     throw std::invalid_argument(
         "UpdateOutput requires an output to already be loaded - call ReadOutput first");
-  } // There is a point for not having this check. Let's see, it's ok for now.
+  }  // There is a point for not having this check. Let's see, it's ok for now.
   return ReadOutput(folder_name, is_mechanism_heterogeneous_);
+}
+
+void OutputReader::ReadTPMW() {
+  boost::optional<boost::property_tree::ptree&> child =
+      xml_main_input.get_child_optional("opensmoke.t-p-mw");
+
+  if (child) {
+    std::stringstream stream;
+    stream.str(xml_main_input.get<std::string>("opensmoke.t-p-mw"));
+    stream >> index_T;
+    stream >> index_P;
+    stream >> index_MW;
+  } else {
+    throw std::invalid_argument("Corrupted xml file: missing the t - p - mw leaf");
+  }
+}
+
+void OutputReader::SortAndIndexSpecies(const std::vector<std::string>& unsorted,
+                                       std::vector<std::string>& sorted,
+                                       std::vector<int>& sorted_index) const {
+  sorted = unsorted;
+  std::sort(sorted.begin(), sorted.end());
+
+  sorted_index.resize(unsorted.size());
+  for (unsigned int j = 0; j < unsorted.size(); j++)
+    for (unsigned int k = 0; k < unsorted.size(); k++)
+      if (sorted[j] == unsorted[k]) {
+        sorted_index[j] = k;
+        break;
+      }
 }
 
 void OutputReader::Prepare() {
   string_list_additional.clear();
   list_of_conversion_species_.clear();
 
-  // Indices of T, P and MW
-  {
-    boost::optional<boost::property_tree::ptree&> child =
-        xml_main_input.get_child_optional("opensmoke.t-p-mw");
-
-    if (child) {
-      std::stringstream stream;
-      stream.str(xml_main_input.get<std::string>("opensmoke.t-p-mw"));
-      stream >> index_T;
-      stream >> index_P;
-      stream >> index_MW;
-    } else {
-      throw std::invalid_argument("Corrupted xml file: missing the t - p - mw leaf");
-    }
-  }
+  ReadTPMW();
 
   {
     boost::optional<boost::property_tree::ptree&> child =
@@ -172,18 +202,8 @@ void OutputReader::Prepare() {
         stream >> column_index_of_massfractions_profiles[j];
       }
 
-      string_list_massfractions_sorted = string_list_massfractions_unsorted;
-
-      std::sort(string_list_massfractions_sorted.begin(), string_list_massfractions_sorted.end());
-      // string_list_massfractions_sorted.sort();
-
-      sorted_index.resize(number_of_massfractions_profiles);
-      for (unsigned int j = 0; j < number_of_massfractions_profiles; j++)
-        for (unsigned int k = 0; k < number_of_massfractions_profiles; k++)
-          if (string_list_massfractions_sorted[j] == string_list_massfractions_unsorted[k]) {
-            sorted_index[j] = k;
-            break;
-          }
+      SortAndIndexSpecies(string_list_massfractions_unsorted,
+                          string_list_massfractions_sorted, sorted_index);
     } else {
       throw std::invalid_argument("Corrupted xml file: missing the mass-fractions leaf");
     }
@@ -263,21 +283,7 @@ void OutputReader::PrepareHeterogeneous() {
   list_of_conversion_species_.clear();
 
   // this part is the same for heterogeneous kinetics
-  // Indices of T, P and MW
-  {
-    boost::optional<boost::property_tree::ptree&> child =
-        xml_main_input.get_child_optional("opensmoke.t-p-mw");
-
-    if (child) {
-      std::stringstream stream;
-      stream.str(xml_main_input.get<std::string>("opensmoke.t-p-mw"));
-      stream >> index_T;
-      stream >> index_P;
-      stream >> index_MW;
-    } else {
-      throw std::invalid_argument("Corrupted xml file: missing the t - p - mw leaf");
-    }
-  }
+  ReadTPMW();
 
   // Additional
   // In heterogeneous phases, we need more/different additional parameters
@@ -313,10 +319,10 @@ void OutputReader::PrepareHeterogeneous() {
         /*
         LG: About the "CARBON" name: I added its print in the OpenSMOKEpp library,
         and it is the sites concentration in kmol/m2.
-        For C-deposition, it is ok, while for catalytic-type problems, it is not: 
-        in the input, the surface would be called something like "Surface-NI", 
-        and the printed name would then be just "NI". 
-        It might be better to look not for the exact name but to print the "Surface-" 
+        For C-deposition, it is ok, while for catalytic-type problems, it is not:
+        in the input, the surface would be called something like "Surface-NI",
+        and the printed name would then be just "NI".
+        It might be better to look not for the exact name but to print the "Surface-"
         keyword and look for anything that starts with that.
         Further note: in OpenSMOKEpp, AC allowed to have multiple surface phases.
                       This is not considered here, and also not important at the moment.
@@ -358,18 +364,8 @@ void OutputReader::PrepareHeterogeneous() {
         stream >> column_index_of_massfractions_profiles[j];
       }
 
-      string_list_massfractions_sorted = string_list_massfractions_unsorted;
-
-      std::sort(string_list_massfractions_sorted.begin(), string_list_massfractions_sorted.end());
-      // string_list_massfractions_sorted.sort();
-
-      sorted_index.resize(number_of_massfractions_profiles);
-      for (unsigned int j = 0; j < number_of_massfractions_profiles; j++)
-        for (unsigned int k = 0; k < number_of_massfractions_profiles; k++)
-          if (string_list_massfractions_sorted[j] == string_list_massfractions_unsorted[k]) {
-            sorted_index[j] = k;
-            break;
-          }
+      SortAndIndexSpecies(string_list_massfractions_unsorted,
+                          string_list_massfractions_sorted, sorted_index);
     } else {
       throw std::invalid_argument("Corrupted xml file: missing the gas-mass-fractions leaf");
     }
@@ -380,7 +376,6 @@ void OutputReader::PrepareHeterogeneous() {
   for (unsigned int j = 0; j < species_names_unsorted_.size(); j++)
     species_index_by_name_[species_names_unsorted_[j]] = static_cast<int>(j);
 
-  // Enhancement: create a sorting function and pass all of these "subsections" to that function sequentially. (Same story for the homogeneous call)
   // Species (surface fractions)
   std::vector<std::string> string_list_surfacefractions_unsorted;
   {
@@ -406,17 +401,8 @@ void OutputReader::PrepareHeterogeneous() {
         stream >> dummy;
         stream >> column_index_of_surfacefractions_profiles[j];
       }
-      string_list_surfacefractions_sorted = string_list_surfacefractions_unsorted;
-
-      std::sort(string_list_surfacefractions_sorted.begin(), string_list_surfacefractions_sorted.end());
-
-      sorted_index_surface.resize(number_of_surfacefractions_profiles);
-      for (unsigned int j = 0; j < number_of_surfacefractions_profiles; j++)
-        for (unsigned int k = 0; k < number_of_surfacefractions_profiles; k++)
-          if (string_list_surfacefractions_sorted[j] == string_list_surfacefractions_unsorted[k]) {
-            sorted_index_surface[j] = k;
-            break;
-        }
+      SortAndIndexSpecies(string_list_surfacefractions_unsorted,
+                          string_list_surfacefractions_sorted, sorted_index_surface);
     } else {
       throw std::invalid_argument("Corrupted xml file: missing the surface-moles-fractions leaf");
     }
@@ -447,18 +433,8 @@ void OutputReader::PrepareHeterogeneous() {
         stream >> column_index_of_bulkmasses_profiles[j];
       }
 
-      string_list_bulkmasses_sorted = string_list_bulkmasses_unsorted;
-
-      std::sort(string_list_bulkmasses_sorted.begin(), string_list_bulkmasses_sorted.end());
-      // string_list_massfractions_sorted.sort();
-
-      sorted_index_bulk.resize(number_of_bulkmasses_profiles);
-      for (unsigned int j = 0; j < number_of_bulkmasses_profiles; j++)
-        for (unsigned int k = 0; k < number_of_bulkmasses_profiles; k++)
-          if (string_list_bulkmasses_sorted[j] == string_list_bulkmasses_unsorted[k]) {
-            sorted_index_bulk[j] = k;
-            break;
-          }
+      SortAndIndexSpecies(string_list_bulkmasses_unsorted, string_list_bulkmasses_sorted,
+                          sorted_index_bulk);
     } else {
       throw std::invalid_argument("Corrupted xml file: missing the bulk-masses leaf");
     }
@@ -542,7 +518,7 @@ void OutputReader::PrepareHeterogeneous() {
   }
 
   // Reactants conversion (probably not required in general)
-  // LG This is wrong as there is no mass loss correction. 
+  // LG This is wrong as there is no mass loss correction.
   // TODO fix this (not important)
   {
     for (unsigned int j = 0; j < number_of_gas_species; j++) {
@@ -583,7 +559,7 @@ std::pair<std::vector<double>, std::vector<double>> OutputReader::GetSpeciesProf
   if (basis == "mass") {
     return std::make_pair(x, y_mass);
   }
-  if (basis == "moles") {
+  if (basis == "mole") {
     std::vector<double> y_mole(y_mass.size());
     const std::vector<double>& mw_mix = additional[index_MW];
     for (unsigned int i = 0; i < y_mass.size(); i++) {
@@ -591,7 +567,7 @@ std::pair<std::vector<double>, std::vector<double>> OutputReader::GetSpeciesProf
     }
     return std::make_pair(x, y_mole);
   }
-  throw std::invalid_argument("basis must be \"mass\" or \"moles\", got \"" + basis + "\"");
+  throw std::invalid_argument("basis must be \"mass\" or \"mole\", got \"" + basis + "\"");
 }
 
 const std::vector<double>& OutputReader::GetIndependentVariableProfile() const {

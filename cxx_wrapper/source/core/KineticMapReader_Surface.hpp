@@ -74,7 +74,8 @@ bool KineticMapReader_Surface::Load(const std::string& folder_name) {
       ptree, kineticsMap_->NumberOfReactions(), reaction_main_class_, reaction_sub_class_);
 
   KineticMapReaderUtils::ReadReactionNamesFile(folder / "surface_reaction_names.xml",
-                                               kineticsMap_->NumberOfReactions(), reaction_names_);
+                                               kineticsMap_->NumberOfReactions(),
+                                               reaction_names_);
 
   BuildNameIndexMaps();
 
@@ -107,7 +108,7 @@ void KineticMapReader_Surface::ReactionsAssociatedToSpecies(const unsigned int i
 }
 
 void KineticMapReader_Surface::IsReactantProduct(const unsigned int reaction_index,
-                                                  double& netStoichiometry) const {
+                                                 double& netStoichiometry) const {
   kineticsMap_->stoichiometry().BuildStoichiometricMatrix();
 
   std::vector<double> reactants_stoich;
@@ -180,14 +181,4 @@ const Eigen::SparseMatrix<double>& KineticMapReader_Surface::StoichiometricMatri
 const Eigen::SparseMatrix<double>& KineticMapReader_Surface::StoichiometricMatrixProducts() const {
   kineticsMap_->stoichiometry().BuildStoichiometricMatrix();
   return kineticsMap_->stoichiometry().stoichiometric_matrix_products();
-}
-
-const Eigen::SparseMatrix<double>& KineticMapReader_Surface::ReactionOrdersMatrixReactants() const {
-  kineticsMap_->stoichiometry().BuildReactionOrdersMatrix();
-  return kineticsMap_->stoichiometry().reactionorders_matrix_reactants();
-}
-
-const Eigen::SparseMatrix<double>& KineticMapReader_Surface::ReactionOrdersMatrixProducts() const {
-  kineticsMap_->stoichiometry().BuildReactionOrdersMatrix();
-  return kineticsMap_->stoichiometry().reactionorders_matrix_products();
 }

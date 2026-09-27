@@ -65,18 +65,19 @@ bool KineticMapReader_Gas::Load(const std::string& folder_name) {
   species_names_ = thermodynamicsMap_->NamesOfSpecies();
 
   KineticMapReaderUtils::ReadSpeciesClassesBlock(
-      ptree, thermodynamicsMap_->NumberOfSpecies(), species_class_names_, species_class_members_,
-      species_to_class_);
+      ptree, thermodynamicsMap_->NumberOfSpecies(), species_class_names_,
+      species_class_members_, species_to_class_);
   has_species_classes_ = !species_class_names_.empty();
 
   has_reaction_classes_ = KineticMapReaderUtils::ReadReactionClassesBlock(
-      ptree, kineticsMap_->NumberOfReactions(), reaction_main_class_, reaction_sub_class_);
+      ptree, kineticsMap_->NumberOfReactions(), reaction_main_class_,
+      reaction_sub_class_);
 
   ReadSootProperties(ptree);
   ReadFallOffAndCabrIndices(ptree);
 
-  KineticMapReaderUtils::ReadReactionNamesFile(folder / "reaction_names.xml",
-                                               kineticsMap_->NumberOfReactions(), reaction_names_);
+  KineticMapReaderUtils::ReadReactionNamesFile(
+      folder / "reaction_names.xml", kineticsMap_->NumberOfReactions(), reaction_names_);
 
   BuildNameIndexMaps();
 
@@ -106,6 +107,8 @@ std::string KineticMapReader_Gas::FormattedReactionNameFromIndex(unsigned int in
   return "R" + std::to_string(global_index) + "(inf): " + ReactionNameFromIndex(global_index - 1);
 }
 
+  // BuildStoichiometricMatrix()/BuildReactionOrdersMatrix() are called only once,
+  // the first instance creates them and they exist aftwerwards.
 void KineticMapReader_Gas::ReactionsAssociatedToSpecies(const unsigned int index,
                                                         std::vector<unsigned int>& indices) const {
   kineticsMap_->stoichiometry().BuildStoichiometricMatrix();
@@ -202,16 +205,6 @@ const Eigen::SparseMatrix<double>& KineticMapReader_Gas::StoichiometricMatrixRea
 const Eigen::SparseMatrix<double>& KineticMapReader_Gas::StoichiometricMatrixProducts() const {
   kineticsMap_->stoichiometry().BuildStoichiometricMatrix();
   return kineticsMap_->stoichiometry().stoichiometric_matrix_products();
-}
-
-const Eigen::SparseMatrix<double>& KineticMapReader_Gas::ReactionOrdersMatrixReactants() const {
-  kineticsMap_->stoichiometry().BuildReactionOrdersMatrix();
-  return kineticsMap_->stoichiometry().reactionorders_matrix_reactants();
-}
-
-const Eigen::SparseMatrix<double>& KineticMapReader_Gas::ReactionOrdersMatrixProducts() const {
-  kineticsMap_->stoichiometry().BuildReactionOrdersMatrix();
-  return kineticsMap_->stoichiometry().reactionorders_matrix_products();
 }
 
 // --- optional <SootProperties> block ---------------------------------

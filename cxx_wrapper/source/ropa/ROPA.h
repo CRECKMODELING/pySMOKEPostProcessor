@@ -41,28 +41,40 @@
 #include "core/PostProcessorCore.h"
 #include "core/Utilities.h"
 
+// RateOfProductionAnalysis/GetReactionRates/GetFormationRates take
+// heterogeneous_reactions: bool = false and internally dispatch to whichever phase-2
+// kinetics is actually loaded (data_->phase2Kind()) when true - Surface or Liquid today,
+// Solid once it gets its own ROPA support. This replaces the former ROPA_Surface and
+// ROPA_Liquid subclasses (which re-implemented these same three methods, in
+// ROPA_Surface's case with a heterogeneous_reactions parameter that just branched to
+// ROPA::<method>() when false) - same unification SensitivityReader::Prepare(Phase)
+// already did for gas/surface sensitivity. A mechanism has at most one phase-2 kinetics
+// loaded at a time (see PostProcessorCore.h), so a single bool is enough to mean
+// "whichever one that is" - each dispatch site below still checks data_->phase2Kind()
+// explicitly and throws a clear error rather than guessing. The *_Surface/*_Liquid
+// bodies themselves live in ROPA_Surface.hpp/ROPA_Liquid.hpp, split out purely to keep
+// this file a readable size.
 class ROPA {
  public:
   ROPA();
 
   void SetResults(PostProcessorCore* data);
 
-  void RateOfProductionAnalysis(const unsigned int number_of_reactions);
+  void RateOfProductionAnalysis(const unsigned int number_of_reactions,
+                                const bool heterogeneous_reactions = false);
 
-  void RateOfProductionAnalysis2D(const unsigned int number_of_reactions, const double local_x,
-                                  const double local_z, const double region_low_x,
-                                  const double region_up_x, const double region_low_z,
-                                  const double region_up_z);
+  void RateOfProductionAnalysis2D(const unsigned int number_of_reactions,
+                                  const double local_x,      const double local_z,
+                                  const double region_low_x, const double region_up_x,
+                                  const double region_low_z, const double region_up_z);
 
   void FluxAnalysis();
 
-  void GetReactionRates(std::vector<unsigned int> reaction_indices, const bool sum_rates);
+  void GetReactionRates(std::vector<unsigned int> reaction_indices, const bool sum_rates,
+                        const bool heterogeneous_reactions = false);
 
-  void GetFormationRates(std::string specie, std::string units, std::string type);
-
-  void SetKineticFolder(const std::string kineticFolder);
-
-  void SetOutputFolder(const std::string outputFolder);
+  void GetFormationRates(std::string specie, std::string units, std::string type,
+                         const bool heterogeneous_reactions = false);
 
   void SetROPAType(const std::string type);
 
@@ -109,13 +121,28 @@ class ROPA {
   inline const std::vector<double>& sumOfRates() const { return sumOfRates_; };
 
  protected:
+  // ROPA on heterogeneous kinetics belongs to the same class, but is implemented
+  // in different files (ROPA_Surface and ROPA_Liquid) to maintain clarity.
+  // Calls to ROPA when heterogeneous_reactions=true are redirected.
+  void RateOfProductionAnalysis_Surface(const unsigned int number_of_reactions);
+  void GetReactionRates_Surface(const std::vector<unsigned int>& reaction_indices,
+                                const bool sum_rates);
+  void GetFormationRates_Surface(const std::string& specie, const std::string& units,
+                                 const std::string& type);
+
+
+  // To be tested, do not take this for granted
+  void RateOfProductionAnalysis_Liquid(const unsigned int number_of_reactions);
+  void GetReactionRates_Liquid(const std::vector<unsigned int>& reaction_indices,
+                               const bool sum_rates);
+  void GetFormationRates_Liquid(const std::string& specie, const std::string& units,
+                                const std::string& type);
+
   PostProcessorCore* data_;
   std::vector<unsigned int> indices_coarse_reactions_;
   std::vector<std::string> string_list_reactions;
 
   std::string ropaType_;
-  std::string kineticFolder_;
-  std::string outputFolder_;
   std::string species_;
 
   double localValue_;
@@ -146,4 +173,6 @@ class ROPA {
 };
 
 #include "ROPA.hpp"
+#include "ROPA_Liquid.hpp"  // Class is shared, put in a different file for clarity
+#include "ROPA_Surface.hpp" // Class is shared, put in a different file for clarity
 #endif  // ROPA_H

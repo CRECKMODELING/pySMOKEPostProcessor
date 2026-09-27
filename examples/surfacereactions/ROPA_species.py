@@ -13,7 +13,7 @@ pp = PostProcessor(kineticFolder, resultsFolder)
 sp = 'C(B)'
 phase_ropa = True
 
-ropa = pp.RateOfProductionAnalysis_Surface(
+ropa = pp.RateOfProductionAnalysis(
                     species=sp,
                     ropa_type='global',
                     number_of_reactions=10,
@@ -34,7 +34,7 @@ else:
 fig1.set_size_inches(10, 6)
 fig1.tight_layout()
 
-# global_ropa_het = pp.RateOfProductionAnalysis_Surface(species='CH4',
+# global_ropa_het = pp.RateOfProductionAnalysis(species='CH4',
 #                                           ropa_type='global',
 #                                           number_of_reactions=10,
 #                                           heterogeneous_reactions=True)

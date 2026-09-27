@@ -42,13 +42,15 @@
 #include "core/Utilities.h"
 
 // Which phase's Sensitivities*.xml/reaction table to read - renamed from
-// Sensitivities_Database. 
-// Gas vs. surface used to be two classes 
+// Sensitivities_Database.
+// Gas vs. surface used to be two classes
 // (Sensitivities_Database / Sensitivities_Database_Surface)
 // with near-duplicated ReadParentFile/ReadFromChildFile bodies (the surface
 // one was already phase-branching internally via a heterogeneousSensitivity_
 // bool - this just promotes that bool to a proper enum and drops the second
 // class.
+// Liquid/Solid sensitivity is unimplemented, not just untested - there is no partial
+// Phase::Liquid/Phase::Solid path here at all
 enum class Phase { Gas, Surface };
 
 class SensitivityDataReader {

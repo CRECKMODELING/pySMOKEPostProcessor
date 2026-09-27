@@ -58,8 +58,6 @@ class KineticMapReader_Surface : public KineticMapReaderBase {
 
   const Eigen::SparseMatrix<double>& StoichiometricMatrixReactants() const;
   const Eigen::SparseMatrix<double>& StoichiometricMatrixProducts() const;
-  const Eigen::SparseMatrix<double>& ReactionOrdersMatrixReactants() const;
-  const Eigen::SparseMatrix<double>& ReactionOrdersMatrixProducts() const;
 
  private:
   OpenSMOKE::ThermodynamicsMap_Surface_CHEMKIN* thermodynamicsMap_;

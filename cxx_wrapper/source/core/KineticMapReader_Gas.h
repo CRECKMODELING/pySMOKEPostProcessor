@@ -41,8 +41,8 @@
 
 // Gas-phase kinetics reader: kinetics.xml + reaction_names.xml. Owns the
 // OpenSMOKEpp gas thermo/kinetics maps (raw pointers, never deleted).
-// Also owns the mechanism-wide <SootProperties> block 
-// and the ReactionsAssociatedToSpecies/isReactantProduct helpers, 
+// Also owns the mechanism-wide <SootProperties> block
+// and the ReactionsAssociatedToSpecies/isReactantProduct helpers,
 // moved here from ProfilesDatabase since they only ever touched the gas kinetics map.
 // Note: these are helpers related to the FluxAnalysis.
 //       if the FluxAnalysis is extended to other phases, this has to be updated.
@@ -70,8 +70,6 @@ class KineticMapReader_Gas : public KineticMapReaderBase {
 
   const Eigen::SparseMatrix<double>& StoichiometricMatrixReactants() const;
   const Eigen::SparseMatrix<double>& StoichiometricMatrixProducts() const;
-  const Eigen::SparseMatrix<double>& ReactionOrdersMatrixReactants() const;
-  const Eigen::SparseMatrix<double>& ReactionOrdersMatrixProducts() const;
 
   // <SootProperties> (kinetics.xml). Empty when the mechanism carries no soot bins.
   bool soot_available_;

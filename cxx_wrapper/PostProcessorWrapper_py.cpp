@@ -14,9 +14,7 @@
 #include "source/core/KineticMapReader_Surface.h"
 #include "source/core/PostProcessorCore.h"
 #include "source/ropa/ROPA.h"
-#include "source/ropa/ROPA_Liquid.h"
-#include "source/ropa/ROPA_Surface.h"
-#include "source/sensitivity/SensitivityReader.h"
+#include "source/sensitivity/SensitivityCalculator.h"
 
 namespace py = pybind11;
 constexpr auto byref = py::return_value_policy::reference_internal;
@@ -53,8 +51,6 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
            py::arg("name"), py::call_guard<py::gil_scoped_release>())
       .def("speciesIndexFromName", &KineticMapReaderBase::SpeciesIndexFromName,
            py::arg("name"), py::call_guard<py::gil_scoped_release>())
-      .def("reactionNames", &KineticMapReaderBase::ReactionNames,
-           py::call_guard<py::gil_scoped_release>())
       .def("speciesNames", &KineticMapReaderBase::SpeciesNames,
            py::call_guard<py::gil_scoped_release>())
       .def("hasSpeciesClasses", &KineticMapReaderBase::HasSpeciesClasses,
@@ -63,40 +59,19 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
            py::call_guard<py::gil_scoped_release>())
       .def("speciesClassMembers", &KineticMapReaderBase::SpeciesClassMembers,
            py::call_guard<py::gil_scoped_release>())
-      .def("speciesToClass", &KineticMapReaderBase::SpeciesToClass,
-           py::call_guard<py::gil_scoped_release>())
-      .def("speciesClassOf", &KineticMapReaderBase::SpeciesClassOf,
-           py::arg("species_name"), py::call_guard<py::gil_scoped_release>())
-      .def("hasReactionClasses", &KineticMapReaderBase::HasReactionClasses,
-           py::call_guard<py::gil_scoped_release>())
-      .def("reactionMainClass", &KineticMapReaderBase::ReactionMainClass,
-           py::call_guard<py::gil_scoped_release>())
-      .def("reactionSubClass", &KineticMapReaderBase::ReactionSubClass,
-           py::call_guard<py::gil_scoped_release>())
-      .def("phaseLabel", &KineticMapReaderBase::PhaseLabel,
-           py::call_guard<py::gil_scoped_release>())
-      .def("isAvailable", &KineticMapReaderBase::IsAvailable,
-           py::call_guard<py::gil_scoped_release>())
-      .def("hasRopa", &KineticMapReaderBase::HasRopa,
-           py::call_guard<py::gil_scoped_release>())
       .def("mw", &KineticMapReaderBase::MW, py::arg("index"),
            py::call_guard<py::gil_scoped_release>());
 
-  // stoichiometricMatrix*/reactionOrdersMatrix* return Eigen::SparseMatrix<double>,
+  // stoichiometricMatrixReactants/Products return Eigen::SparseMatrix<double>,
   // converted to scipy.sparse automatically by pybind11/eigen.h - replaces the
-  // from-scratch pySMOKEPostProcessor/maps/StoichiometricMap.py.
+  // from-scratch pySMOKEPostProcessor/maps/StoichiometricMap.py. Unused, but exists as
+  // stoichiometric matrix interface.
   py::class_<KineticMapReader_Gas, KineticMapReaderBase>(m, "KineticMapReader_Gas")
       .def("stoichiometricMatrixReactants",
            &KineticMapReader_Gas::StoichiometricMatrixReactants,
            py::call_guard<py::gil_scoped_release>())
       .def("stoichiometricMatrixProducts",
            &KineticMapReader_Gas::StoichiometricMatrixProducts,
-           py::call_guard<py::gil_scoped_release>())
-      .def("reactionOrdersMatrixReactants",
-           &KineticMapReader_Gas::ReactionOrdersMatrixReactants,
-           py::call_guard<py::gil_scoped_release>())
-      .def("reactionOrdersMatrixProducts",
-           &KineticMapReader_Gas::ReactionOrdersMatrixProducts,
            py::call_guard<py::gil_scoped_release>());
 
   py::class_<KineticMapReader_Surface, KineticMapReaderBase>(m,
@@ -106,17 +81,9 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
            py::call_guard<py::gil_scoped_release>())
       .def("stoichiometricMatrixProducts",
            &KineticMapReader_Surface::StoichiometricMatrixProducts,
-           py::call_guard<py::gil_scoped_release>())
-      .def("reactionOrdersMatrixReactants",
-           &KineticMapReader_Surface::ReactionOrdersMatrixReactants,
-           py::call_guard<py::gil_scoped_release>())
-      .def("reactionOrdersMatrixProducts",
-           &KineticMapReader_Surface::ReactionOrdersMatrixProducts,
            py::call_guard<py::gil_scoped_release>());
 
-  // Liquid/Solid: structurally verified only (no fixture data), same caveat as
-  // ROPA_Liquid above. No stoichiometric/reaction-order hooks - those were only
-  // added where StoichiometricMap.py's retirement needed them (gas + surface).
+  // Liquid/Solid: structurally verified only (no example data)
   py::class_<KineticMapReader_Liquid, KineticMapReaderBase>(m, "KineticMapReader_Liquid");
   py::class_<KineticMapReader_Solid, KineticMapReaderBase>(m, "KineticMapReader_Solid");
 
@@ -142,14 +109,8 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
       .def("phase2Kinetics", &PostProcessorCore::phase2Kinetics, byref,
            py::call_guard<py::gil_scoped_release>())
       // --- OutputReader's read surface (kinetics-independent, see OutputReader.h) ---
-      .def("mwSpecies", &PostProcessorCore::mwSpecies,
-           py::call_guard<py::gil_scoped_release>())
-      .def("outputSpeciesNames", &PostProcessorCore::speciesNames,
-           py::call_guard<py::gil_scoped_release>())
-      .def("outputSpeciesIndexFromName", &PostProcessorCore::SpeciesIndexFromName,
-           py::arg("name"), py::call_guard<py::gil_scoped_release>())
       .def("getSpeciesProfile", &PostProcessorCore::GetSpeciesProfile, py::arg("name"),
-           py::arg("basis")="moles", py::call_guard<py::gil_scoped_release>())
+           py::arg("basis") = "mole", py::call_guard<py::gil_scoped_release>())
       .def("getIndependentVariableProfile",
            &PostProcessorCore::GetIndependentVariableProfile,
            py::call_guard<py::gil_scoped_release>())
@@ -161,19 +122,18 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
       .def("setResults", &ROPA::SetResults, py::arg("data"),
            py::call_guard<py::gil_scoped_release>())
       .def("rateOfProductionAnalysis", &ROPA::RateOfProductionAnalysis,
-           py::arg("number_of_reactions") = 10, py::call_guard<py::gil_scoped_release>())
-      .def("ropa", &ROPA::RateOfProductionAnalysis2D,
+           py::arg("number_of_reactions") = 10,
+           py::arg("heterogeneous_reactions") = false,
+           py::call_guard<py::gil_scoped_release>())
+      .def("RateOfProductionAnalysis2D", &ROPA::RateOfProductionAnalysis2D,
            py::call_guard<py::gil_scoped_release>())  // TODO keyword arguments
       .def("fluxAnalysis", &ROPA::FluxAnalysis,
            py::call_guard<py::gil_scoped_release>())  // No arguments
       .def("getReactionRates", &ROPA::GetReactionRates, py::arg("reaction_indices"),
-           py::arg("sum_rates") = false, py::call_guard<py::gil_scoped_release>())
-      .def("getFormationRates", &ROPA::GetFormationRates, py::arg("specie"),
-           py::arg("units"), py::arg("type"), py::call_guard<py::gil_scoped_release>())
-      .def("setKineticFolder", &ROPA::SetKineticFolder,
-           py::arg("kineticFolder") = "kinetics",
+           py::arg("sum_rates") = false, py::arg("heterogeneous_reactions") = false,
            py::call_guard<py::gil_scoped_release>())
-      .def("setOutputFolder", &ROPA::SetOutputFolder, py::arg("outputFolder") = "Output",
+      .def("getFormationRates", &ROPA::GetFormationRates, py::arg("specie"),
+           py::arg("units"), py::arg("type"), py::arg("heterogeneous_reactions") = false,
            py::call_guard<py::gil_scoped_release>())
       .def("setROPAType", &ROPA::SetROPAType, py::arg("type") = "global",
            py::call_guard<py::gil_scoped_release>())
@@ -213,75 +173,41 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
            py::call_guard<py::gil_scoped_release>())
       .def("sumOfRates", &ROPA::sumOfRates, py::call_guard<py::gil_scoped_release>());
 
-  py::class_<ROPA_Surface, ROPA>(m, "ROPA_Surface")
-      .def(py::init<>())
-      .def("rateOfProductionAnalysis", &ROPA_Surface::RateOfProductionAnalysis,
-           py::arg("number_of_reactions") = 10,
-           py::arg("heterogeneous_reactions") = false,
-           py::call_guard<py::gil_scoped_release>())
-      .def("getReactionRates", &ROPA_Surface::GetReactionRates,
-           py::arg("reaction_indices"), py::arg("sum_rates") = false,
-           py::arg("heterogeneous_reactions") = false,
-           py::call_guard<py::gil_scoped_release>())
-      .def("getFormationRates", &ROPA_Surface::GetFormationRates, py::arg("specie"),
-           py::arg("units") = "mole", py::arg("type") = "net",
-           py::arg("heterogeneous_reactions") = false,
-           py::call_guard<py::gil_scoped_release>())
-      .def("setROPAPhase", &ROPA_Surface::SetROPAPhase,
-           py::arg("heterogeneous_reactions") = false,
-           py::call_guard<py::gil_scoped_release>())
-      .def("setResults", &ROPA_Surface::SetResults, py::arg("data"),
-           py::call_guard<py::gil_scoped_release>());
-
-  // Liquid-phase ROPA - structurally verified only (no liquid Output.xml
-  // fixture exists anywhere to exercise it against, see ROPA_Liquid.h).
-  // FluxAnalysis stays inherited from ROPA unchanged (gas-only).
-  py::class_<ROPA_Liquid, ROPA>(m, "ROPA_Liquid")
-      .def(py::init<>())
-      .def("setResults", &ROPA_Liquid::SetResults, py::arg("data"),
-           py::call_guard<py::gil_scoped_release>())
-      .def("rateOfProductionAnalysis", &ROPA_Liquid::RateOfProductionAnalysis,
-           py::arg("number_of_reactions") = 10, py::call_guard<py::gil_scoped_release>())
-      .def("getReactionRates", &ROPA_Liquid::GetReactionRates,
-           py::arg("reaction_indices"), py::arg("sum_rates") = false,
-           py::call_guard<py::gil_scoped_release>())
-      .def("getFormationRates", &ROPA_Liquid::GetFormationRates, py::arg("specie"),
-           py::arg("units"), py::arg("type"), py::call_guard<py::gil_scoped_release>());
-
   py::enum_<Phase>(m, "Phase").value("Gas", Phase::Gas).value("Surface", Phase::Surface);
 
-  py::class_<SensitivityReader>(m, "Sensitivity")
+  py::class_<SensitivityCalculator>(m, "Sensitivity")
       .def(py::init<>())
-      .def("setResults", &SensitivityReader::SetResults, py::arg("data"),
+      .def("setResults", &SensitivityCalculator::SetResults, py::arg("data"),
            py::call_guard<py::gil_scoped_release>())
-      .def("setNormalizationType", &SensitivityReader::SetNormalizationType,
+      .def("setNormalizationType", &SensitivityCalculator::SetNormalizationType,
            py::arg("normalizationType") = "max-value",
            py::call_guard<py::gil_scoped_release>())
-      .def("setSensitivityType", &SensitivityReader::SetSensitivityType,
+      .def("setSensitivityType", &SensitivityCalculator::SetSensitivityType,
            py::arg("sensitivityType") = "global",
            py::call_guard<py::gil_scoped_release>())
-      .def("setOrderingType", &SensitivityReader::SetOrderingType,
+      .def("setOrderingType", &SensitivityCalculator::SetOrderingType,
            py::arg("orderingType") = "peak-values",
            py::call_guard<py::gil_scoped_release>())
-      .def("setTarget", &SensitivityReader::SetTarget, py::arg("target"),
+      .def("setTarget", &SensitivityCalculator::SetTarget, py::arg("target"),
            py::call_guard<py::gil_scoped_release>())
-      .def("setLocalValue", &SensitivityReader::SetLocalValue, py::arg("localValue"),
+      .def("setLocalValue", &SensitivityCalculator::SetLocalValue, py::arg("localValue"),
            py::call_guard<py::gil_scoped_release>())
-      .def("setLowerBound", &SensitivityReader::SetLowerBound, py::arg("lowerBound"),
+      .def("setLowerBound", &SensitivityCalculator::SetLowerBound, py::arg("lowerBound"),
            py::call_guard<py::gil_scoped_release>())
-      .def("setUpperBound", &SensitivityReader::SetUpperBound, py::arg("upperBound"),
+      .def("setUpperBound", &SensitivityCalculator::SetUpperBound, py::arg("upperBound"),
            py::call_guard<py::gil_scoped_release>())
-      .def("prepare", &SensitivityReader::Prepare, py::arg("phase") = Phase::Gas,
+      .def("prepare", &SensitivityCalculator::Prepare, py::arg("phase") = Phase::Gas,
            py::call_guard<py::gil_scoped_release>())
-      .def("sensitivityAnalysis", &SensitivityReader::Sensitivity_Analysis,
+      .def("sensitivityAnalysis", &SensitivityCalculator::Sensitivity_Analysis,
            py::arg("number_of_reactions") = 10, py::call_guard<py::gil_scoped_release>())
-      .def("readSensitivityCoefficients", &SensitivityReader::ReadSensitivityCoefficients,
+      .def("readSensitivityCoefficients",
+           &SensitivityCalculator::ReadSensitivityCoefficients,
            py::call_guard<py::gil_scoped_release>())
-      .def("getSensitivityProfile", &SensitivityReader::GetSensitivityProfile,
+      .def("getSensitivityProfile", &SensitivityCalculator::GetSensitivityProfile,
            py::arg("reaction_index"), py::call_guard<py::gil_scoped_release>())
-      .def("reactions", &SensitivityReader::reactions,
+      .def("reactions", &SensitivityCalculator::reactions,
            py::call_guard<py::gil_scoped_release>())
-      .def("sensitivityCoefficients", &SensitivityReader::sensitivityCoefficients,
+      .def("sensitivityCoefficients", &SensitivityCalculator::sensitivityCoefficients,
            py::call_guard<py::gil_scoped_release>());
 
   py::class_<SpeciesClass>(m, "SpeciesClass")
@@ -332,8 +258,6 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
            py::call_guard<py::gil_scoped_release>())
       .def("classNames", &SpeciesClass::classNames,
            py::call_guard<py::gil_scoped_release>())
-      .def("speciesToClass", &SpeciesClass::speciesToClass,
-           py::call_guard<py::gil_scoped_release>())
       .def("abscissa", &SpeciesClass::abscissa, py::call_guard<py::gil_scoped_release>())
       .def("elementalFractions", &SpeciesClass::elementalFractions,
            py::call_guard<py::gil_scoped_release>())
@@ -359,7 +283,8 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
       .def("mainClass", &ReactionClass::mainClass,
            py::call_guard<py::gil_scoped_release>())
       .def("subClass", &ReactionClass::subClass, py::call_guard<py::gil_scoped_release>())
-      .def("mergeDuplicates", // C++ style parameters-by-reference needs Python translation
+      .def("mergeDuplicates",  
+          // C++ style parameters-by-reference needs Python translation
           [](const ReactionClass& self,
              const std::vector<std::vector<int>>& species_indices,
              const std::vector<std::vector<double>>& species_coefficients) {

@@ -37,7 +37,7 @@
 
 #include "core/Utilities.h"
 
-SensitivityReader::SensitivityReader() {
+SensitivityCalculator::SensitivityCalculator() {
   sensitivityType_ = "global";
   normalizationType_ = "local";
   orderingType_ = "peak-values";
@@ -48,21 +48,23 @@ SensitivityReader::SensitivityReader() {
   upperBound_ = 0;
 }
 
-SensitivityReader::~SensitivityReader() {}
+SensitivityCalculator::~SensitivityCalculator() {}
 
-void SensitivityReader::SetResults(PostProcessorCore* data) {
+void SensitivityCalculator::SetResults(PostProcessorCore* data) {
   if (!data->HasKinetics()) {
     throw std::invalid_argument(
-        "SensitivityReader::SetResults: no kinetics mechanism loaded on this PostProcessorCore");
+        "SensitivityCalculator::SetResults: no kinetics mechanism loaded on this "
+        "PostProcessorCore");
   }
   if (!data->HasOutput()) {
     throw std::invalid_argument(
-        "SensitivityReader::SetResults: no simulation output loaded on this PostProcessorCore");
+        "SensitivityCalculator::SetResults: no simulation output loaded on this "
+        "PostProcessorCore");
   }
   data_ = data;
 }
 
-void SensitivityReader::SetNormalizationType(std::string normalizationType) {
+void SensitivityCalculator::SetNormalizationType(std::string normalizationType) {
   if (normalizationType != "local" && normalizationType != "max-value") {
     throw std::invalid_argument("Available normalization types are: local | max-value");
   }
@@ -73,7 +75,7 @@ void SensitivityReader::SetNormalizationType(std::string normalizationType) {
   }
 }
 
-void SensitivityReader::SetSensitivityType(std::string sensitivityType) {
+void SensitivityCalculator::SetSensitivityType(std::string sensitivityType) {
   if (sensitivityType != "global" && sensitivityType != "local" &&
       sensitivityType != "region") {
     throw std::invalid_argument(
@@ -83,7 +85,7 @@ void SensitivityReader::SetSensitivityType(std::string sensitivityType) {
   sensitivityType_ = sensitivityType;
 }
 
-void SensitivityReader::SetOrderingType(std::string orderingType) {
+void SensitivityCalculator::SetOrderingType(std::string orderingType) {
   if (orderingType != "peak-values" && orderingType != "area" &&
       orderingType != "absolute-area") {
     throw std::invalid_argument(
@@ -92,15 +94,15 @@ void SensitivityReader::SetOrderingType(std::string orderingType) {
   orderingType_ = orderingType;
 }
 
-void SensitivityReader::SetTarget(std::string target) { target_ = target; }
+void SensitivityCalculator::SetTarget(std::string target) { target_ = target; }
 
-void SensitivityReader::SetLocalValue(double localValue) { localValue_ = localValue; }
+void SensitivityCalculator::SetLocalValue(double localValue) { localValue_ = localValue; }
 
-void SensitivityReader::SetLowerBound(double lowerBound) { lowerBound_ = lowerBound; }
+void SensitivityCalculator::SetLowerBound(double lowerBound) { lowerBound_ = lowerBound; }
 
-void SensitivityReader::SetUpperBound(double upperBound) { upperBound_ = upperBound; }
+void SensitivityCalculator::SetUpperBound(double upperBound) { upperBound_ = upperBound; }
 
-void SensitivityReader::Prepare(Phase phase) {
+void SensitivityCalculator::Prepare(Phase phase) {
   sensitivities = new SensitivityDataReader(phase);
   sensitivities->SetResults(data_);
   sensitivities->ReadParentFile();
@@ -118,7 +120,7 @@ void SensitivityReader::Prepare(Phase phase) {
   }
 }
 
-void SensitivityReader::Sensitivity_Analysis(const unsigned int number_of_reactions) {
+void SensitivityCalculator::Sensitivity_Analysis(const unsigned int number_of_reactions) {
   std::vector<int> indices;
   std::vector<double> coefficients;
 
@@ -256,13 +258,13 @@ void SensitivityReader::Sensitivity_Analysis(const unsigned int number_of_reacti
   }
 }
 
-void SensitivityReader::ReadSensitivityCoefficients() {
+void SensitivityCalculator::ReadSensitivityCoefficients() {
   if (target_ == "") throw std::invalid_argument("Select a target!");
 
   sensitivities->ReadFromChildFile(target_);
 }
 
-void SensitivityReader::GetSensitivityProfile(unsigned int reaction_index) {
+void SensitivityCalculator::GetSensitivityProfile(unsigned int reaction_index) {
   std::string selected_y = target_;
   if (target_ == "") {
     throw std::invalid_argument("You have to select one of the available Y variables");

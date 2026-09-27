@@ -35,20 +35,24 @@
 |                                                                         |
 \*-----------------------------------------------------------------------*/
 
-#ifndef SENSITIVITYREADER_H
-#define SENSITIVITYREADER_H
+#ifndef SENSITIVITYCALCULATOR_H
+#define SENSITIVITYCALCULATOR_H
 
-#include "core/PostProcessorCore.h"
 #include "SensitivityDataReader.h"
+#include "core/PostProcessorCore.h"
 
-// Renamed from Sensitivities. 
-// Prepare(Phase) containts what used to be a separate 
-// Sensitivities_Surface::Prepare(bool) override into one method.
-class SensitivityReader {
+// Renamed from Sensitivities, then from SensitivityReader (the "Reader" name undersold
+// it - this class prepares, reads coefficients from SensitivityDataReader, AND runs the
+// analysis). The Python-facing binding name stays "Sensitivity"
+// (PostProcessorWrapper_py.cpp), so this rename touches no Python call site.
+// Prepare(Phase) contains what used to be a separate
+// Sensitivities_Surface::Prepare(bool) override into one method - see also ROPA.h's
+// heterogeneous_reactions parameter, which folded ROPA_Surface into ROPA the same way.
+class SensitivityCalculator {
  public:
-  SensitivityReader();
+  SensitivityCalculator();
 
-  ~SensitivityReader();
+  ~SensitivityCalculator();
 
   void SetResults(PostProcessorCore* data);
 
@@ -99,5 +103,5 @@ class SensitivityReader {
   SensitivityDataReader* sensitivities;
 };
 
-#include "SensitivityReader.hpp"
-#endif  // SENSITIVITYREADER_H
+#include "SensitivityCalculator.hpp"
+#endif  // SENSITIVITYCALCULATOR_H

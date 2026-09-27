@@ -42,18 +42,12 @@
 
 ROPA::ROPA() {
   ropaType_ = "global";
-  kineticFolder_ = "";
-  outputFolder_ = "";
   species_ = "";
 
   localValue_ = 0;
   upperBound_ = 0;
   lowerBound_ = 0;
 }
-
-void ROPA::SetKineticFolder(const std::string kineticFolder) { kineticFolder_ = kineticFolder; }
-
-void ROPA::SetOutputFolder(const std::string outputFolder) { outputFolder_ = outputFolder; }
 
 void ROPA::SetROPAType(const std::string ropaType) {
   if (ropaType != "global" && ropaType != "local" && ropaType != "region")
@@ -107,7 +101,22 @@ void ROPA::SetLabelType(std::string type) {
   label_type_ = type;
 }
 
-void ROPA::RateOfProductionAnalysis(const unsigned int number_of_reactions) {
+void ROPA::RateOfProductionAnalysis(const unsigned int number_of_reactions,
+                                    const bool heterogeneous_reactions) {
+  if (heterogeneous_reactions) {
+    if (data_->phase2Kind() == Phase2Kind::Surface) {
+      RateOfProductionAnalysis_Surface(number_of_reactions);
+    } else if (data_->phase2Kind() == Phase2Kind::Liquid) {
+      RateOfProductionAnalysis_Liquid(number_of_reactions);
+    } else {
+      throw std::invalid_argument(
+          "ROPA::RateOfProductionAnalysis: heterogeneous_reactions=true requires a "
+          "PostProcessorCore with surface or liquid kinetics loaded");
+    }
+    return;
+  }
+  // heterogeneous_reactions = false
+
   // Select y variables among the species
   if (std::find(data_->string_list_massfractions_sorted.begin(),
                 data_->string_list_massfractions_sorted.end(),
@@ -135,8 +144,10 @@ void ROPA::RateOfProductionAnalysis(const unsigned int number_of_reactions) {
   std::vector<double> reaction_coefficients;
 
   // Local Analysis
-  // TODO: are we sure that we cannot put this as a function and call it multiple times with slightly different arguments?
-  // It is basically the same thing twice on ROPA and twice on GetReactionRates (+ Surface, which has the same problem with its implementation)
+  // TODO: are we sure that we cannot put this as a function and call it multiple times
+  // with slightly different arguments? It is basically the same thing twice on ROPA and
+  // twice on GetReactionRates (+ Surface, which has the same problem with its
+  // implementation)
   if (ropaType_ == "local") {
     unsigned int index = 0;
     for (unsigned int j = 0; j < data_->number_of_abscissas_; j++) {
@@ -176,8 +187,8 @@ void ROPA::RateOfProductionAnalysis(const unsigned int number_of_reactions) {
     MergePositiveAndNegativeBars(ropa.production_reaction_indices[index_of_species],
                                  ropa.destruction_reaction_indices[index_of_species],
                                  ropa.production_coefficients[index_of_species],
-                                 ropa.destruction_coefficients[index_of_species], reaction_indices,
-                                 reaction_coefficients);
+                                 ropa.destruction_coefficients[index_of_species],
+                                 reaction_indices, reaction_coefficients);
   }  // Global | Region
   else {
     unsigned int index_min = 0;
@@ -203,7 +214,8 @@ void ROPA::RateOfProductionAnalysis(const unsigned int number_of_reactions) {
       }
     }
 
-    const double delta = data_->additional[0][index_max] - data_->additional[0][index_min];
+    const double delta =
+        data_->additional[0][index_max] - data_->additional[0][index_min];
 
     std::vector<double> global_production_coefficients;
     std::vector<double> global_destruction_coefficients;
@@ -251,29 +263,35 @@ void ROPA::RateOfProductionAnalysis(const unsigned int number_of_reactions) {
             ropa.production_coefficients[index_of_species].size());
         global_destruction_coefficients.resize(
             ropa.destruction_coefficients[index_of_species].size());
-        global_production_reaction_indices = ropa.production_reaction_indices[index_of_species];
-        global_destruction_reaction_indices = ropa.destruction_reaction_indices[index_of_species];
+        global_production_reaction_indices =
+            ropa.production_reaction_indices[index_of_species];
+        global_destruction_reaction_indices =
+            ropa.destruction_reaction_indices[index_of_species];
       }
 
       const double dt = (data_->additional[0][j + 1] - data_->additional[0][j]) / delta;
-      for (unsigned int k = 0; k < ropa.production_coefficients[index_of_species].size(); k++)
-        global_production_coefficients[k] += dt * ropa.production_coefficients[index_of_species][k];
+      for (unsigned int k = 0; k < ropa.production_coefficients[index_of_species].size();
+           k++)
+        global_production_coefficients[k] +=
+            dt * ropa.production_coefficients[index_of_species][k];
 
-      for (unsigned int k = 0; k < ropa.destruction_coefficients[index_of_species].size(); k++)
+      for (unsigned int k = 0; k < ropa.destruction_coefficients[index_of_species].size();
+           k++)
         global_destruction_coefficients[k] +=
             dt * ropa.destruction_coefficients[index_of_species][k];
     }
 
-    MergePositiveAndNegativeBars(global_production_reaction_indices,
-                                 global_destruction_reaction_indices,
-                                 global_production_coefficients, global_destruction_coefficients,
-                                 reaction_indices, reaction_coefficients);
+    MergePositiveAndNegativeBars(
+        global_production_reaction_indices, global_destruction_reaction_indices,
+        global_production_coefficients, global_destruction_coefficients, 
+        reaction_indices, reaction_coefficients);
   }
 
   coefficients_.resize(std::min<int>(number_of_reactions, reaction_coefficients.size()));
   reactions_.resize(std::min<int>(number_of_reactions, reaction_coefficients.size()));
 
-  for (int i = 0; i < std::min<int>(number_of_reactions, reaction_coefficients.size()); i++) {
+  for (int i = 0; i < std::min<int>(number_of_reactions, reaction_coefficients.size());
+       i++) {
     coefficients_[i] = reaction_coefficients[i];
     reactions_[i] = reaction_indices[i];
   }
@@ -392,7 +410,20 @@ void ROPA::FluxAnalysis() {
   computedLabel_ = flux_analysis.ComputedLabelValue;
 }
 
-void ROPA::GetReactionRates(std::vector<unsigned int> reaction_indices, const bool sum_rates) {
+void ROPA::GetReactionRates(std::vector<unsigned int> reaction_indices,
+                            const bool sum_rates, const bool heterogeneous_reactions) {
+  if (heterogeneous_reactions) {
+    if (data_->phase2Kind() == Phase2Kind::Surface) {
+      GetReactionRates_Surface(reaction_indices, sum_rates);
+    } else if (data_->phase2Kind() == Phase2Kind::Liquid) {
+      GetReactionRates_Liquid(reaction_indices, sum_rates);
+    } else {
+      throw std::invalid_argument(
+          "ROPA::GetReactionRates: heterogeneous_reactions=true requires a "
+          "PostProcessorCore with surface or liquid kinetics loaded");
+    }
+    return;
+  }
   unsigned int numberOfReactions = reaction_indices.size();
   // Calculate the reaction rates
   {
@@ -452,7 +483,20 @@ void ROPA::GetReactionRates(std::vector<unsigned int> reaction_indices, const bo
   }
 }
 
-void ROPA::GetFormationRates(std::string specie, std::string units, std::string type) {
+void ROPA::GetFormationRates(std::string specie, std::string units, std::string type,
+                             const bool heterogeneous_reactions) {
+  if (heterogeneous_reactions) {
+    if (data_->phase2Kind() == Phase2Kind::Surface) {
+      GetFormationRates_Surface(specie, units, type);
+    } else if (data_->phase2Kind() == Phase2Kind::Liquid) {
+      GetFormationRates_Liquid(specie, units, type);
+    } else {
+      throw std::invalid_argument(
+          "ROPA::GetFormationRates: heterogeneous_reactions=true requires a "
+          "PostProcessorCore with surface or liquid kinetics loaded");
+    }
+    return;
+  }
   if (units != "mass" && units != "mole")
     throw std::invalid_argument("Available Formation Rates units are: mole | mass");
 
@@ -517,10 +561,12 @@ void ROPA::GetFormationRates(std::string specie, std::string units, std::string 
         formationRates_[i] = c[k] / (D[k] + 1.e-32);
       } else {
         if (units == "mass") {
-          OpenSMOKE::ElementByElementProduct(
-              P.Size(), P.GetHandle(), data_->thermodynamicsMapXML->MWs().data(), P.GetHandle());
-          OpenSMOKE::ElementByElementProduct(
-              D.Size(), D.GetHandle(), data_->thermodynamicsMapXML->MWs().data(), D.GetHandle());
+          OpenSMOKE::ElementByElementProduct(P.Size(), P.GetHandle(),
+                                             data_->thermodynamicsMapXML->MWs().data(),
+                                             P.GetHandle());
+          OpenSMOKE::ElementByElementProduct(D.Size(), D.GetHandle(),
+                                             data_->thermodynamicsMapXML->MWs().data(),
+                                             D.GetHandle());
         }
 
         const unsigned k = data_->sorted_index[formation_rates_to_plot[1]] + 1;
@@ -539,10 +585,23 @@ void ROPA::GetFormationRates(std::string specie, std::string units, std::string 
   }
 }
 
-void ROPA::RateOfProductionAnalysis2D(const unsigned int number_of_reactions, double local_x,
-                                      double local_z, double region_low_x, double region_up_x,
-                                      double region_low_z, double region_up_z) {
+void ROPA::RateOfProductionAnalysis2D(const unsigned int number_of_reactions,
+                                      double local_x, double local_z, double region_low_x,
+                                      double region_up_x, double region_low_z,
+                                      double region_up_z) {
   // This function is totally inefficent and by far the worst code I have evere written
+  // Only meaningful for 2D/3D flame simulations, whose Output.xml carries x-coord/
+  // z-coord/volume <additional> columns; a batch-reactor/PFR Output.xml (0D/1D) doesn't,
+  // leaving index_x_coord/index_z_coord/index_volume at OutputReader's "-1 (unset)"
+  // sentinel - indexing data_->additional with that would be an out-of-bounds read.
+  if (data_->index_x_coord == static_cast<unsigned int>(-1) ||
+      data_->index_z_coord == static_cast<unsigned int>(-1) ||
+      data_->index_volume == static_cast<unsigned int>(-1)) {
+    throw std::invalid_argument(
+        "ROPA::RateOfProductionAnalysis2D: this Output.xml has no x-coord/z-coord/volume "
+        "<additional> columns (only 2D/3D flame simulations do) - 2D ROPA is not "
+        "available for this simulation");
+  }
   // Select y variables among the species
   if (std::find(data_->string_list_massfractions_sorted.begin(),
                 data_->string_list_massfractions_sorted.end(),
@@ -609,8 +668,8 @@ void ROPA::RateOfProductionAnalysis2D(const unsigned int number_of_reactions, do
     MergePositiveAndNegativeBars(ropa.production_reaction_indices[index_of_species],
                                  ropa.destruction_reaction_indices[index_of_species],
                                  ropa.production_coefficients[index_of_species],
-                                 ropa.destruction_coefficients[index_of_species], reaction_indices,
-                                 reaction_coefficients);
+                                 ropa.destruction_coefficients[index_of_species],
+                                 reaction_indices, reaction_coefficients);
   }  // Region
   else if (ropaType_ == "region") {
     std::vector<double> global_production_coefficients;
@@ -750,10 +809,10 @@ void ROPA::RateOfProductionAnalysis2D(const unsigned int number_of_reactions, do
         }
       }
     }
-    MergePositiveAndNegativeBars(global_production_reaction_indices,
-                                 global_destruction_reaction_indices,
-                                 global_production_coefficients, global_destruction_coefficients,
-                                 reaction_indices, reaction_coefficients);
+    MergePositiveAndNegativeBars(
+        global_production_reaction_indices, global_destruction_reaction_indices,
+        global_production_coefficients, global_destruction_coefficients,
+        reaction_indices, reaction_coefficients);
   } else  // Global
   {
     double tmp = 0;
@@ -828,10 +887,10 @@ void ROPA::RateOfProductionAnalysis2D(const unsigned int number_of_reactions, do
             integral_contribution * ropa.destruction_coefficients[index_of_species][k];
     }
 
-    MergePositiveAndNegativeBars(global_production_reaction_indices,
-                                 global_destruction_reaction_indices,
-                                 global_production_coefficients, global_destruction_coefficients,
-                                 reaction_indices, reaction_coefficients);
+    MergePositiveAndNegativeBars(
+        global_production_reaction_indices, global_destruction_reaction_indices,
+        global_production_coefficients, global_destruction_coefficients,
+        reaction_indices, reaction_coefficients);
   }
 
   coefficients_.resize(std::min<int>(number_of_reactions, reaction_coefficients.size()));

@@ -34,23 +34,36 @@
 |                                                                         |
 \*-----------------------------------------------------------------------*/
 
+// Out-of-line ROPA::*_Liquid method definitions - RateOfProductionAnalysis_Liquid,
+// GetReactionRates_Liquid, GetFormationRates_Liquid. Not a separate class: these are the
+// liquid-kinetics bodies
+// ROPA::RateOfProductionAnalysis/GetReactionRates/GetFormationRates dispatch to when
+// heterogeneous_reactions=true and data_->phase2Kind() == Phase2Kind::Liquid (see ROPA.h
+// and ROPA.hpp) - this used to be the entire ROPA_Liquid subclass, folded into ROPA the
+// same way ROPA_Surface was (see ROPA_Surface.hpp).
+//
+// Unlike Surface (a genuinely different, composite gas+site+bulk state vector), a liquid
+// mechanism's Output.xml is assumed to carry the same single-phase <mass-fractions>/
+// <profiles> shape gas does - confirmed for kinetics.liquid.xml against a real mechanism,
+// but no liquid Output.xml fixture exists anywhere to verify this against, so this file
+// is structurally verified only (compiles, wired correctly), not exercised end-to-end.
+// Because of that shape equivalence, the three methods below are ROPA's own single-phase
+// logic with kineticsMapXML/thermodynamicsMapXML swapped for
+// kineticsMapLiquidXML/thermodynamicsMapLiquidXML - not ROPA_Surface's composite-state
+// logic, which doesn't apply here. FluxAnalysis stays inherited from ROPA unchanged
+// (gas-only, same limitation Surface has - see ROPA_Surface.hpp).
+
 #include <algorithm>
 
 #include "math/OpenSMOKEUtilities.h"
 
-ROPA_Liquid::ROPA_Liquid() {
-  ROPA();  // Fallback on parent constructor
-}
-
-void ROPA_Liquid::SetResults(PostProcessorCore* data) {
-  ROPA::SetResults(data);
-  if (data->phase2Kind() != Phase2Kind::Liquid) {
+void ROPA::RateOfProductionAnalysis_Liquid(const unsigned int number_of_reactions) {
+  if (data_->phase2Kind() != Phase2Kind::Liquid) {
     throw std::invalid_argument(
-        "ROPA_Liquid::SetResults: this PostProcessorCore has no liquid kinetics loaded");
+        "ROPA::RateOfProductionAnalysis: heterogeneous_reactions=true requires a "
+        "PostProcessorCore with liquid kinetics loaded");
   }
-}
 
-void ROPA_Liquid::RateOfProductionAnalysis(const unsigned int number_of_reactions) {
   // Select y variables among the species
   if (std::find(data_->string_list_massfractions_sorted.begin(),
                 data_->string_list_massfractions_sorted.end(),
@@ -61,7 +74,8 @@ void ROPA_Liquid::RateOfProductionAnalysis(const unsigned int number_of_reaction
   }
 
   unsigned int index_of_species;
-  for (unsigned int j = 0; j < data_->thermodynamicsMapLiquidXML->NumberOfSpecies(); j++) {
+  for (unsigned int j = 0; j < data_->thermodynamicsMapLiquidXML->NumberOfSpecies();
+       j++) {
     if (speciesIsSelected == true) {
       if (species_ == data_->string_list_massfractions_sorted[j]) {
         index_of_species = data_->sorted_index[j];
@@ -70,9 +84,12 @@ void ROPA_Liquid::RateOfProductionAnalysis(const unsigned int number_of_reaction
     }
   }
 
-  OpenSMOKE::OpenSMOKEVectorDouble x(data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
-  OpenSMOKE::OpenSMOKEVectorDouble omega(data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
-  OpenSMOKE::OpenSMOKEVectorDouble c(data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
+  OpenSMOKE::OpenSMOKEVectorDouble x(
+      data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
+  OpenSMOKE::OpenSMOKEVectorDouble omega(
+      data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
+  OpenSMOKE::OpenSMOKEVectorDouble c(
+      data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
   // KineticsMap_Liquid_CHEMKIN::ReactionRates also takes the gas-phase
   // concentrations (for gas<->liquid interface reactions). No gas-phase
   // concentration profile is tracked in a liquid Output.xml (assumed
@@ -94,13 +111,14 @@ void ROPA_Liquid::RateOfProductionAnalysis(const unsigned int number_of_reaction
       }
     }
     // Recovers mass fractions
-    for (unsigned int k = 0; k < data_->thermodynamicsMapLiquidXML->NumberOfSpecies(); k++)
+    for (unsigned int k = 0; k < data_->thermodynamicsMapLiquidXML->NumberOfSpecies();
+         k++)
       omega[k + 1] = data_->omega[k][index];
 
     // Calculates mole fractions
     double MWmix;
-    data_->thermodynamicsMapLiquidXML->MoleFractions_From_MassFractions(x.GetHandle(), MWmix,
-                                                                        omega.GetHandle());
+    data_->thermodynamicsMapLiquidXML->MoleFractions_From_MassFractions(
+        x.GetHandle(), MWmix, omega.GetHandle());
 
     // Calculates concentrations
     const double P_Pa = data_->additional[data_->index_P][index];
@@ -124,8 +142,8 @@ void ROPA_Liquid::RateOfProductionAnalysis(const unsigned int number_of_reaction
     MergePositiveAndNegativeBars(ropa.production_reaction_indices[index_of_species],
                                  ropa.destruction_reaction_indices[index_of_species],
                                  ropa.production_coefficients[index_of_species],
-                                 ropa.destruction_coefficients[index_of_species], reaction_indices,
-                                 reaction_coefficients);
+                                 ropa.destruction_coefficients[index_of_species],
+                                 reaction_indices, reaction_coefficients);
   }  // Global | Region
   else {
     unsigned int index_min = 0;
@@ -151,7 +169,8 @@ void ROPA_Liquid::RateOfProductionAnalysis(const unsigned int number_of_reaction
       }
     }
 
-    const double delta = data_->additional[0][index_max] - data_->additional[0][index_min];
+    const double delta =
+        data_->additional[0][index_max] - data_->additional[0][index_min];
 
     std::vector<double> global_production_coefficients;
     std::vector<double> global_destruction_coefficients;
@@ -160,13 +179,14 @@ void ROPA_Liquid::RateOfProductionAnalysis(const unsigned int number_of_reaction
 
     for (unsigned int j = index_min; j < index_max - 1; j++) {
       // Recovers mass fractions
-      for (unsigned int k = 0; k < data_->thermodynamicsMapLiquidXML->NumberOfSpecies(); k++)
+      for (unsigned int k = 0; k < data_->thermodynamicsMapLiquidXML->NumberOfSpecies();
+           k++)
         omega[k + 1] = data_->omega[k][j];
 
       // Calculates mole fractions
       double MWmix;
-      data_->thermodynamicsMapLiquidXML->MoleFractions_From_MassFractions(x.GetHandle(), MWmix,
-                                                                          omega.GetHandle());
+      data_->thermodynamicsMapLiquidXML->MoleFractions_From_MassFractions(
+          x.GetHandle(), MWmix, omega.GetHandle());
 
       // Calculates concentrations
       const double P_Pa = data_->additional[data_->index_P][j];
@@ -199,58 +219,77 @@ void ROPA_Liquid::RateOfProductionAnalysis(const unsigned int number_of_reaction
             ropa.production_coefficients[index_of_species].size());
         global_destruction_coefficients.resize(
             ropa.destruction_coefficients[index_of_species].size());
-        global_production_reaction_indices = ropa.production_reaction_indices[index_of_species];
-        global_destruction_reaction_indices = ropa.destruction_reaction_indices[index_of_species];
+        global_production_reaction_indices =
+            ropa.production_reaction_indices[index_of_species];
+        global_destruction_reaction_indices =
+            ropa.destruction_reaction_indices[index_of_species];
       }
 
       const double dt = (data_->additional[0][j + 1] - data_->additional[0][j]) / delta;
-      for (unsigned int k = 0; k < ropa.production_coefficients[index_of_species].size(); k++)
-        global_production_coefficients[k] += dt * ropa.production_coefficients[index_of_species][k];
+      for (unsigned int k = 0; k < ropa.production_coefficients[index_of_species].size();
+           k++)
+        global_production_coefficients[k] +=
+            dt * ropa.production_coefficients[index_of_species][k];
 
-      for (unsigned int k = 0; k < ropa.destruction_coefficients[index_of_species].size(); k++)
+      for (unsigned int k = 0; k < ropa.destruction_coefficients[index_of_species].size();
+           k++)
         global_destruction_coefficients[k] +=
             dt * ropa.destruction_coefficients[index_of_species][k];
     }
 
-    MergePositiveAndNegativeBars(global_production_reaction_indices,
-                                 global_destruction_reaction_indices,
-                                 global_production_coefficients, global_destruction_coefficients,
-                                 reaction_indices, reaction_coefficients);
+    MergePositiveAndNegativeBars(
+        global_production_reaction_indices, global_destruction_reaction_indices,
+        global_production_coefficients, global_destruction_coefficients, reaction_indices,
+        reaction_coefficients);
   }
 
   coefficients_.resize(std::min<int>(number_of_reactions, reaction_coefficients.size()));
   reactions_.resize(std::min<int>(number_of_reactions, reaction_coefficients.size()));
 
-  for (int i = 0; i < std::min<int>(number_of_reactions, reaction_coefficients.size()); i++) {
+  for (int i = 0; i < std::min<int>(number_of_reactions, reaction_coefficients.size());
+       i++) {
     coefficients_[i] = reaction_coefficients[i];
     reactions_[i] = reaction_indices[i];
   }
 }
 
-void ROPA_Liquid::GetReactionRates(std::vector<unsigned int> reaction_indices, const bool sum_rates) {
+void ROPA::GetReactionRates_Liquid(const std::vector<unsigned int>& reaction_indices,
+                                   const bool sum_rates) {
+  if (data_->phase2Kind() != Phase2Kind::Liquid) {
+    throw std::invalid_argument(
+        "ROPA::GetReactionRates: heterogeneous_reactions=true requires a "
+        "PostProcessorCore with liquid kinetics loaded");
+  }
+
   unsigned int numberOfReactions = reaction_indices.size();
   // Calculate the reaction rates
   {
     sumOfRates_.resize(data_->number_of_abscissas_);
-    reactionRates_.resize(numberOfReactions, std::vector<double>(data_->number_of_abscissas_, 1));
+    reactionRates_.resize(numberOfReactions,
+                          std::vector<double>(data_->number_of_abscissas_, 1));
 
-    OpenSMOKE::OpenSMOKEVectorDouble x(data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
-    OpenSMOKE::OpenSMOKEVectorDouble omega(data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
-    OpenSMOKE::OpenSMOKEVectorDouble c(data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
+    OpenSMOKE::OpenSMOKEVectorDouble x(
+        data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
+    OpenSMOKE::OpenSMOKEVectorDouble omega(
+        data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
+    OpenSMOKE::OpenSMOKEVectorDouble c(
+        data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
     OpenSMOKE::OpenSMOKEVectorDouble r(data_->kineticsMapLiquidXML->NumberOfReactions());
-    // See RateOfProductionAnalysis() above for why this is zero throughout.
-    OpenSMOKE::OpenSMOKEVectorDouble c_gas(data_->thermodynamicsMapXML->NumberOfSpecies());
+    // See RateOfProductionAnalysis_Liquid() above for why this is zero throughout.
+    OpenSMOKE::OpenSMOKEVectorDouble c_gas(
+        data_->thermodynamicsMapXML->NumberOfSpecies());
     c_gas = 0.;
 
     for (unsigned int i = 0; i < data_->number_of_abscissas_; i++) {
       // Recovers mass fractions
-      for (unsigned int k = 0; k < data_->thermodynamicsMapLiquidXML->NumberOfSpecies(); k++)
+      for (unsigned int k = 0; k < data_->thermodynamicsMapLiquidXML->NumberOfSpecies();
+           k++)
         omega[k + 1] = data_->omega[k][i];
 
       // Calculate mole fractions
       double MWmix;
-      data_->thermodynamicsMapLiquidXML->MoleFractions_From_MassFractions(x.GetHandle(), MWmix,
-                                                                          omega.GetHandle());
+      data_->thermodynamicsMapLiquidXML->MoleFractions_From_MassFractions(
+          x.GetHandle(), MWmix, omega.GetHandle());
 
       // Calculate concentrations
       const double P_Pa = data_->additional[data_->index_P][i];
@@ -284,7 +323,13 @@ void ROPA_Liquid::GetReactionRates(std::vector<unsigned int> reaction_indices, c
   }
 }
 
-void ROPA_Liquid::GetFormationRates(std::string specie, std::string units, std::string type) {
+void ROPA::GetFormationRates_Liquid(const std::string& specie, const std::string& units,
+                                    const std::string& type) {
+  if (data_->phase2Kind() != Phase2Kind::Liquid) {
+    throw std::invalid_argument(
+        "ROPA::GetFormationRates: heterogeneous_reactions=true requires a "
+        "PostProcessorCore with liquid kinetics loaded");
+  }
   if (units != "mass" && units != "mole")
     throw std::invalid_argument("Available Formation Rates units are: mole | mass");
 
@@ -308,24 +353,31 @@ void ROPA_Liquid::GetFormationRates(std::string specie, std::string units, std::
   {
     formationRates_.resize(data_->number_of_abscissas_);
 
-    OpenSMOKE::OpenSMOKEVectorDouble P(data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
-    OpenSMOKE::OpenSMOKEVectorDouble D(data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
-    OpenSMOKE::OpenSMOKEVectorDouble x(data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
-    OpenSMOKE::OpenSMOKEVectorDouble omega(data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
-    OpenSMOKE::OpenSMOKEVectorDouble c(data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
-    // See RateOfProductionAnalysis() above for why this is zero throughout.
-    OpenSMOKE::OpenSMOKEVectorDouble c_gas(data_->thermodynamicsMapXML->NumberOfSpecies());
+    OpenSMOKE::OpenSMOKEVectorDouble P(
+        data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
+    OpenSMOKE::OpenSMOKEVectorDouble D(
+        data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
+    OpenSMOKE::OpenSMOKEVectorDouble x(
+        data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
+    OpenSMOKE::OpenSMOKEVectorDouble omega(
+        data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
+    OpenSMOKE::OpenSMOKEVectorDouble c(
+        data_->thermodynamicsMapLiquidXML->NumberOfSpecies());
+    // See RateOfProductionAnalysis_Liquid() above for why this is zero throughout.
+    OpenSMOKE::OpenSMOKEVectorDouble c_gas(
+        data_->thermodynamicsMapXML->NumberOfSpecies());
     c_gas = 0.;
 
     for (unsigned int i = 0; i < data_->number_of_abscissas_; i++) {
       // Recovers mass fractions
-      for (unsigned int k = 0; k < data_->thermodynamicsMapLiquidXML->NumberOfSpecies(); k++)
+      for (unsigned int k = 0; k < data_->thermodynamicsMapLiquidXML->NumberOfSpecies();
+           k++)
         omega[k + 1] = data_->omega[k][i];
 
       // Calculates mole fractions
       double MWmix;
-      data_->thermodynamicsMapLiquidXML->MoleFractions_From_MassFractions(x.GetHandle(), MWmix,
-                                                                          omega.GetHandle());
+      data_->thermodynamicsMapLiquidXML->MoleFractions_From_MassFractions(
+          x.GetHandle(), MWmix, omega.GetHandle());
 
       // Calculates concentrations
       const double P_Pa = data_->additional[data_->index_P][i];
@@ -341,20 +393,21 @@ void ROPA_Liquid::GetFormationRates(std::string specie, std::string units, std::
 
       data_->kineticsMapLiquidXML->KineticConstants();
       data_->kineticsMapLiquidXML->ReactionRates(c_gas.GetHandle(), c.GetHandle());
-      data_->kineticsMapLiquidXML->ProductionAndDestructionRates(P.GetHandle(),
-                                                                  D.GetHandle());  // kmol/m3/s
+      data_->kineticsMapLiquidXML->ProductionAndDestructionRates(
+          P.GetHandle(),
+          D.GetHandle());  // kmol/m3/s
 
       if (type == "characteristic-time") {
         const unsigned k = data_->sorted_index[formation_rates_to_plot[1]] + 1;
         formationRates_[i] = c[k] / (D[k] + 1.e-32);
       } else {
         if (units == "mass") {
-          OpenSMOKE::ElementByElementProduct(P.Size(), P.GetHandle(),
-                                             data_->thermodynamicsMapLiquidXML->MWs().data(),
-                                             P.GetHandle());
-          OpenSMOKE::ElementByElementProduct(D.Size(), D.GetHandle(),
-                                             data_->thermodynamicsMapLiquidXML->MWs().data(),
-                                             D.GetHandle());
+          OpenSMOKE::ElementByElementProduct(
+              P.Size(), P.GetHandle(), data_->thermodynamicsMapLiquidXML->MWs().data(),
+              P.GetHandle());
+          OpenSMOKE::ElementByElementProduct(
+              D.Size(), D.GetHandle(), data_->thermodynamicsMapLiquidXML->MWs().data(),
+              D.GetHandle());
         }
 
         const unsigned k = data_->sorted_index[formation_rates_to_plot[1]] + 1;

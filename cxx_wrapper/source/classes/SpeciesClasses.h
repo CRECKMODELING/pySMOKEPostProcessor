@@ -71,20 +71,26 @@ class SpeciesClass {
   // FluxByClass() first builds the full directed class -> class element-flux
   // matrix (every reaction contributes, species filtering is only applied later)
   // Then, the full matrix class -> class is filtered at the end.
-  void SetFluxPerClass(const bool flux_per_class);    // Choose target, either a speciesClass or a species
-  void SetClassName(const std::string class_name);    // set target when flux_per_class == true
-  void SetSpecies(const std::string species);         // set target when flux_per_class == false
+  // Choose target, either a speciesClass (SetClassName) or a species (SetSpecies) -
+  // flux_per_class == false + SetSpecies(...) resolves the species to its own class. 
+  // Nothing downstream of the seed differs between the two modes.
+  void SetFluxPerClass(const bool flux_per_class);
+  void SetClassName(
+      const std::string class_name);           // set target when flux_per_class == true
+  void SetSpecies(const std::string species);  // set target when flux_per_class == false
   void SetElement(const std::string element);
   void SetFluxAnalysisType(const std::string type);  // production | destruction
   void SetLocalValue(const double localValue);
-  void SetThickness(const std::string thickness);    // absolute | relative
-  void SetLabelType(const std::string type);         // absolute | relative
+  void SetThickness(const std::string thickness);  // absolute | relative
+  void SetLabelType(const std::string type);       // absolute | relative
   void SetThicknessLogScale(const bool thicknesslogscale);
-  void SetWidth(const int width);                     // max links per class node (graph)
-  void SetDepth(const int depth);                     // class-graph generations from the target
-  void SetThreshold(const double threshold);          // min % of a node's flux to keep a link
-  void SetCarbonWeighted(const bool carbon_weighted); // see FluxByClass() below (default true)
-  void SetAutoPruneDiagonal(const bool auto_prune_diagonal);  // zero fluxMatrix()'s diagonal (default true)
+  void SetWidth(const int width);             // max links per class node (graph)
+  void SetDepth(const int depth);             // class-graph generations from the target
+  void SetThreshold(const double threshold);  // min % of a node's flux to keep a link
+  void SetCarbonWeighted(
+      const bool carbon_weighted);  // see FluxByClass() below (default true)
+  void SetAutoPruneDiagonal(
+      const bool auto_prune_diagonal);  // zero fluxMatrix()'s diagonal (default true)
   void FluxByClass();
 
   inline const std::vector<std::string>& classNames() const { return class_names_; }
@@ -100,22 +106,34 @@ class SpeciesClass {
   // true (default): those entries are typically far larger than any cross-class
   // one and make a heatmap of the matrix unreadable; the graph never draws them
   // regardless (self-loops are excluded from the walk).
-  inline const std::vector<std::vector<double>>& fluxMatrix() const { return flux_matrix_; }
-  inline const std::vector<int>& indexFirstClass() const { return index_first_class_; }   // "Reactant" speciesClass
-  inline const std::vector<int>& indexSecondClass() const { return index_second_class_; } // "Product"  speciesClass
-  inline const std::vector<double>& computedThickness() const { return computed_thickness_; } // Thickness
-  inline const std::vector<double>& computedLabel() const { return computed_label_; }         // Label
+  inline const std::vector<std::vector<double>>& fluxMatrix() const {
+    return flux_matrix_;
+  }
+  inline const std::vector<int>& indexFirstClass() const {
+    return index_first_class_;
+  }  // "Reactant" speciesClass
+  inline const std::vector<int>& indexSecondClass() const {
+    return index_second_class_;
+  }  // "Product"  speciesClass
+  inline const std::vector<double>& computedThickness() const {
+    return computed_thickness_;
+  }  // Thickness
+  inline const std::vector<double>& computedLabel() const {
+    return computed_label_;
+  }  // Label
 
  protected:
   void ReadSpeciesClasses();
   unsigned int ElementIndex(const std::string& element) const;
 
   PostProcessorCore* data_;
-  bool species_classes_available_; // Boolean flag
+  bool species_classes_available_;  // Boolean flag
 
-  std::vector<std::string> class_names_;                  // Class names (e.g. SOOT-X, AROMATICS, C2, etc)
-  std::vector<std::vector<unsigned int>> class_species_;  // External vector: classes. Internal vector: indices of species inside that class.
-  std::vector<int> species_to_class_;                     // For each species, index of the class it belongs to (-1 if none)
+  std::vector<std::string> class_names_;  // Class names (e.g. SOOT-X, AROMATICS, C2, etc)
+  std::vector<std::vector<unsigned int>> class_species_;  
+      // External vector: classes. Internal vector: indices of species inside that class.
+  std::vector<int> species_to_class_;  
+  // For each species, index of the class it belongs to (-1 if none)
 
   std::string species_;
   std::string class_name_;
@@ -135,14 +153,15 @@ class SpeciesClass {
   std::vector<double> abscissa_;                          // [point]
   std::vector<std::vector<double>> elemental_fractions_;  // [class][point]
 
-  std::vector<std::string> species_names_;                     // [species], every species in the mechanism
+  std::vector<std::string> species_names_;  // [species], every species in the mechanism
   std::vector<std::vector<double>> element_moles_by_species_;  // [species][point]
 
-  std::vector<std::vector<double>> flux_matrix_;       // [source class][target class], full directed
-  std::vector<int> index_first_class_;                 // [edge] -> source class
-  std::vector<int> index_second_class_;                // [edge] -> target class
-  std::vector<double> computed_thickness_;             // [edge]
-  std::vector<double> computed_label_;                 // [edge] -> flux (% of node, or absolute)
+  std::vector<std::vector<double>> flux_matrix_;
+                                            // [source class][target class], full directed
+  std::vector<int> index_first_class_;      // [edge] -> source class
+  std::vector<int> index_second_class_;     // [edge] -> target class
+  std::vector<double> computed_thickness_;  // [edge]
+  std::vector<double> computed_label_;      // [edge] -> flux (% of node, or absolute)
 };
 
 #include "SpeciesClasses.hpp"

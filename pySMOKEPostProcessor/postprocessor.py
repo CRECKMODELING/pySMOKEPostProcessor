@@ -9,7 +9,6 @@ from .pySMOKEPostProcessor import (
     Phase,
     Phase2Kind,
     Sensitivity,
-    ROPA_Surface,
     SpeciesClass,
     Soot,
 )
@@ -130,7 +129,7 @@ class PostProcessor:
 
         Args:
             name: species name.
-            basis: "mass" or "moles".
+            basis: "mass" or "mole".
             as_dataframe: return a single-column DataFrame indexed by the
                 independent variable instead of the (x, y) tuple.
         """
@@ -323,9 +322,11 @@ class PostProcessor:
         region_location: dict = None,
         mass_ropa: bool = False,
         include_names: bool = True,
+        heterogeneous_reactions: bool = False,
     ) -> dict:
         """
-        Function that performs the [R]ate [O]f [P]roduction [A]nalysis
+        Function that performs the [R]ate [O]f [P]roduction [A]nalysis. Covers both gas
+        and heterogeneous reactions (currently tested for surface-only).
         Args:
             species: Name of the target species for the ROPA
             ropa_type: Type of ROPA to be performed available are: global | local | region
@@ -335,13 +336,17 @@ class PostProcessor:
             number_of_reactions: Number Of Reactions to return after the ROPA
             two_dimensions: Activate the support for the ROPA for 2D/3D simulations (TODO: find a better name)
             region_location: 2D option
-            mass_ropa: Return the ROPA coefficients in mass unit
+            mass_ropa: Return the ROPA coefficients in mass unit. Not supported together
+                with heterogeneous_reactions=True.
             include_names: Resolve reaction_names (one ReactionNameFromIndex lookup per
                 returned reaction). Callers that only need reaction_indices/coefficients
                 (e.g. reaction-class flux aggregation, which re-derives names from its own
                 per-mechanism table) can set this False to skip it - cheap per call, but it
                 adds up across the many species x many-timesteps loops in
                 script_utils.process_classes / surfacereactions_utilities.deposition_plot.
+            heterogeneous_reactions: Perform the ROPA on the surface (deposition)
+                reactions instead of gas reactions. Requires a heterogeneous mechanism
+                (self.isHeterogeneous); not supported together with two_dimensions=True.
 
         Returns:
             A dictionary as the following one:
@@ -349,99 +354,42 @@ class PostProcessor:
                                 'reaction_names': [...],
                                 'reaction_indices': [...]}
                 Containing the ROPA coefficients, the reaction names (None if include_names
-                is False) and the indices of the reactions.
+                is False) and the indices of the reactions (in the selected reaction phase,
+                when heterogeneous_reactions=True).
         """
 
-        if two_dimensions is False:
-            widget = ROPA()
-            widget.setResults(self.db)
-            widget.setROPAType(ropa_type)
-            widget.setSpecies(species)
-            widget.setLocalValue(local_value)
-            widget.setLowerBound(lower_value)
-            widget.setUpperBound(upper_value)
-
-            widget.rateOfProductionAnalysis(number_of_reactions)
-
-            reaction_indices = widget.reactions()
-            ropa_coefficients = widget.coefficients()
-
-            reaction_names = None
-            if include_names:
-                reaction_names = [self.km.formattedReactionNameFromIndex(i) for i in reaction_indices]
-
-            if mass_ropa:
-                ropa_coefficients = self.convert_tomass(ropa_coefficients, species)
-
-            ropa_result = {
-                "coefficients": ropa_coefficients,
-                "reaction_names": reaction_names,
-                "reaction_indices": reaction_indices,
-            }
-
-            return ropa_result
-        else:
+        if two_dimensions:
+            if heterogeneous_reactions:
+                raise ValueError("two_dimensions and heterogeneous_reactions cannot both be True")
             return self.RateOfProductionAnalysis2D(species, ropa_type, number_of_reactions, region_location, mass_ropa)
 
-    def RateOfProductionAnalysis_Surface(
-        self,
-        species: str,
-        ropa_type: str,
-        local_value: float = 0,
-        lower_value: float = 0,
-        upper_value: float = 0,
-        number_of_reactions: int = 10,
-        heterogeneous_reactions: bool = False,
-        #   mass_ropa: bool = False     # Not sure we need the conversion to mass. I see the point, but for now not important
-        include_names: bool = True,
-    ) -> dict:
-        """
-        Function that performs the [R]ate [O]f [P]roduction [A]nalysis for the coupled gas mechanism with deposition (Surface)
-        Args:
-            species: Name of the target species for the ROPA
-            ropa_type: Type of ROPA to be performed available are: gloabal | local | region
-            local_value: Local value of the domain in where perform the ROPA
-            lower_value: Lower value of the domain for the region ROPA
-            upper_value: Upper value of the domain for the region ROPA
-            number_of_reactions: Number Of Reactions to return after the ROPA
-            heterogeneous_reactions: Decide if ROPA is performed on Gas (False) or Surface (True) reactions
-            include_names: Resolve reaction_names (one ReactionNameFromIndex lookup per
-                returned reaction). See RateOfProductionAnalysis for when to skip it.
-
-        Returns:
-            A dictionary as the following one:
-                ropa_results = {'coefficients': [...],
-                                'reaction_names': [...],
-                                'reaction_indices': [...]}
-                Containing the ROPA coefficients, the reaction names (None if include_names
-                is False) and the indices of the reactions in the selected reaction phase
-        """
-
-        widget = ROPA_Surface()
+        widget = ROPA()
         widget.setResults(self.db)
         widget.setROPAType(ropa_type)
-        widget.setROPAPhase(heterogeneous_reactions)
         widget.setSpecies(species)
         widget.setLocalValue(local_value)
         widget.setLowerBound(lower_value)
         widget.setUpperBound(upper_value)
 
-        widget.rateOfProductionAnalysis(number_of_reactions,heterogeneous_reactions)
+        widget.rateOfProductionAnalysis(number_of_reactions, heterogeneous_reactions)
 
         reaction_indices = widget.reactions()
         ropa_coefficients = widget.coefficients()
+
         reaction_names = None
         if include_names:
             kinmap = self.kmhet if heterogeneous_reactions else self.km
             reaction_names = [kinmap.formattedReactionNameFromIndex(i) for i in reaction_indices]
 
-        # if mass_ropa:
-        #     ropa_coefficients = self.convert_tomass(ropa_coefficients, species)
+        if mass_ropa:
+            if heterogeneous_reactions:
+                raise ValueError("mass_ropa is not supported with heterogeneous_reactions=True")
+            ropa_coefficients = self.convert_tomass(ropa_coefficients, species)
 
         ropa_result = {
             "coefficients": ropa_coefficients,
             "reaction_names": reaction_names,
-            "reaction_indices": reaction_indices
+            "reaction_indices": reaction_indices,
         }
 
         return ropa_result
@@ -799,14 +747,9 @@ class PostProcessor:
             else:
                 reaction_index = [self.kmhet.reactionIndexFromName(name=i) for i in reaction_name]
 
-        if not self.isHeterogeneous:
-            widget = ROPA()
-            widget.setResults(self.db)
-            widget.getReactionRates(reaction_index, sum_rates)
-        else:
-            widget = ROPA_Surface()
-            widget.setResults(self.db)
-            widget.getReactionRates(reaction_index, sum_rates,heterogeneous_reactions)
+        widget = ROPA()
+        widget.setResults(self.db)
+        widget.getReactionRates(reaction_index, sum_rates, heterogeneous_reactions)
 
         if sum_rates:
             reaction_rates = [widget.sumOfRates()]
@@ -815,11 +758,16 @@ class PostProcessor:
 
         return reaction_rates
 
-    def GetFormationRates(self, formation_rate_type: str, species: str, units: str = "mole"):
-        # TODO @lgiardini implement this in the hpp and update for surface reactions
+    def GetFormationRates(
+        self,
+        formation_rate_type: str,
+        species: str,
+        units: str = "mole",
+        heterogeneous_reactions: bool = False,
+    ):
         widget = ROPA()
         widget.setResults(self.db)
-        widget.getFormationRates(species, units, formation_rate_type)
+        widget.getFormationRates(species, units, formation_rate_type, heterogeneous_reactions)
         formationRates = widget.formationRates()
 
         return formationRates
@@ -875,10 +823,9 @@ class PostProcessor:
         rr = dict.fromkeys(rxnnames_sr.index)
         rrsum = pd.Series(index=rxnnames_sr.index, dtype=np.float64)
         for label, rxnnames in rxnnames_sr.items():
-            if not self.isHeterogeneous:
-                rr[label] = np.array(self.GetReactionRates(reaction_name=rxnnames, sum_rates=True)[0])
-            else:
-                rr[label] = np.array(self.GetReactionRates(reaction_name=rxnnames, sum_rates=True,heterogeneous_reactions=heterogeneous_reactions)[0])
+            rr[label] = np.array(self.GetReactionRates(
+                reaction_name=rxnnames, sum_rates=True,
+                heterogeneous_reactions=heterogeneous_reactions)[0])
             rrsum[label] = _trapz(y=rr[label], x=xaxis)
 
         # check cumulative contribution and filter based on threshold
@@ -941,10 +888,8 @@ class PostProcessor:
         for idx in ropa_df.index:
             check = False
 
-            if not self.isHeterogeneous:
-                rr_idx = np.array(self.GetReactionRates(reaction_index=[idx])[0])
-            else:
-                rr_idx = np.array(self.GetReactionRates(reaction_index=[idx],heterogeneous_reactions=heterogeneous_reactions)[0])
+            rr_idx = np.array(self.GetReactionRates(
+                reaction_index=[idx], heterogeneous_reactions=heterogeneous_reactions)[0])
 
             rrsum_idx = _trapz(y=rr_idx, x=xaxis)
             if (rrsum_idx * float(ropa_df["factor"][idx])) < 0:
