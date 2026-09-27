@@ -37,18 +37,15 @@
 #ifndef KINETICMAPREADERUTILS_H
 #define KINETICMAPREADERUTILS_H
 
-// Shared ptree-scanning helpers used by every KineticMapReader_* 
-// to parse the optional post-processing blocks out of a
-// kinetics.xml/kinetics.surface.xml/... ptree already in memory (no second
-// file parse). Lifted, unchanged in logic, from what used to be 
-// ProfilesDatabase's private ReadSpeciesClassesBlock/ReadReactionClassesBlock/
-// ReadSootProperties
+// Shared ptree-scanning helpers used by every KineticMapReader_* to 
+// parse the optional post-processing blocks (Soot,ReactionClasses, etc.)
+// out of a kinetics.xml/kinetics.surface.xml/... ptree already in memory.
 namespace KineticMapReaderUtils {
 
 // Locates an optional post-processing block in a pre-existing ptree.
 // The block location is phase-specific: in gas-phase
 // <SpeciesClasses>/<ReactionClasses> are under <opensmoke><Kinetics>;
-// surface mechanism blocks are in <opensmoke><Kinetics><MaterialKinetics>.
+// heterogeneous mechanism blocks are in <opensmoke><Kinetics><MaterialKinetics>.
 inline boost::optional<const boost::property_tree::ptree&> FindMechanismBlock(
     const boost::property_tree::ptree& root, const std::string& name) {
   static const char* const parents[] = {"opensmoke.Kinetics.",
@@ -144,8 +141,9 @@ inline bool ReadReactionClassesBlock(const boost::property_tree::ptree& mechanis
 
 // Reads a phase's reaction-names file (a flat <opensmoke.reaction-names> text
 // leaf, one whitespace-separated token per reaction, exactly nr of them) into
-// reaction_names. Throws if the file is missing - callers whose phase has no
-// such file (solid) don't call this at all and synthesize names instead.
+// reaction_names. 
+// Throws if the file is missing - phases where it is not implemented
+// (e.g. solid) should use R{num} instead.
 inline void ReadReactionNamesFile(const boost::filesystem::path& path,
                                   const unsigned int nr,
                                   std::vector<std::string>& reaction_names) {

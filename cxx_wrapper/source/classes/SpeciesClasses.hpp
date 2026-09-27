@@ -64,11 +64,11 @@ SpeciesClass::SpeciesClass() {
 void SpeciesClass::SetResults(PostProcessorCore* data) {
   if (!data->HasKinetics()) {
     throw std::invalid_argument(
-        "SpeciesClass::SetResults: no kinetics mechanism loaded on this PostProcessorCore");
+        "SpeciesClass::SetResults: no kinetics mechanism loaded on this PostProcessor");
   }
   if (!data->HasOutput()) {
     throw std::invalid_argument(
-        "SpeciesClass::SetResults: no simulation output loaded on this PostProcessorCore");
+        "SpeciesClass::SetResults: no simulation output loaded on this PostProcessor");
   }
   data_ = data;
   ReadSpeciesClasses();
@@ -118,7 +118,6 @@ void SpeciesClass::SetAutoPruneDiagonal(const bool auto_prune_diagonal) {
   auto_prune_diagonal_ = auto_prune_diagonal;
 }
 
-// The <SpeciesClasses> block is parsed in ProfilesDatabase::ReadKineticMechanism
 void SpeciesClass::ReadSpeciesClasses() {
   species_classes_available_ = false;
   class_names_.clear();
@@ -191,7 +190,7 @@ void SpeciesClass::ElementalDistribution(const std::string element, const bool n
 // Class -> class element-flux matrix, computed straight from every per-reaction flux. 
 // Two weightings are available via carbon_weighted_: 
 // the per-reaction "carbon share" routing, and the OpenSMOKE carbon-atom throughput of
-// maps/FluxAnalysisMap.hpp::AnalyzeNetFluxes. 
+// FluxAnalysisMap.hpp::AnalyzeNetFluxes. 
 // The matrix is always available via fluxMatrix(); 
 // width_/depth_/threshold_ only are used to simplify the class graph, 
 // coming straight from the seed class.

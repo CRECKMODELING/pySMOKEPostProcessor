@@ -61,11 +61,13 @@ class KineticMapReaderBase {
   std::string SpeciesNameFromIndex(unsigned int index) const;   // 0-based
 
   // "R{n}: {name}", 1-based n (same as previous implementations),
-  // formerly reconstructed in Python by the KineticMap class. This
-  // default is enough for every phase whose widgets only ever report an
+  // formerly reconstructed in Python by the KineticMap class. 
+  // This default is enough for every phase whose widgets only ever report an
   // index in [0, NumberOfReactions).
   // The Gas phase requires more due to the presence of FallOff and CAB Reactions
   // and has therefore his own override.
+  // Phase-specific reactions, like stick, coverage, and similar may require this
+  // to change. The additional index is only required for sensitivity analyses.
   virtual std::string FormattedReactionNameFromIndex(unsigned int index) const;
   int ReactionIndexFromName(const std::string& name) const;     // throws if unknown
   int SpeciesIndexFromName(const std::string& name) const;      // throws if unknown

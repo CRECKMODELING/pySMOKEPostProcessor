@@ -99,10 +99,9 @@ int KineticMapReaderBase::SpeciesClassOf(const std::string& species_name) const 
 
 void KineticMapReaderBase::BuildNameIndexMaps() {
   // emplace (not operator[]): on a duplicate name, keep the first occurrence,
-  // matching the previous Python implementation's list.index() semantics.
-  // Mechanisms can legitimately declare the same reaction name twice (explicit
-  // duplicates); silently letting the last one win would change which physical
-  // reaction every by-name lookup resolves to.
+  // matching the previous Python implementation's list.index().
+  // This is a choice to stay consistent with Luna's previous implementation
+  // in the ReactionClasses calculations.
   reaction_index_by_name_.clear();
   for (unsigned int j = 0; j < reaction_names_.size(); j++) {
     reaction_index_by_name_.emplace(reaction_names_[j], static_cast<int>(j));

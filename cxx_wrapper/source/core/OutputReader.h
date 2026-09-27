@@ -41,10 +41,11 @@
 #include <unordered_map>
 
 // Reader for the file Output.xml: T/P/MW/species profiles, <additional> 
-// columns, and the bookkeeping needed to look any of it up by name. 
-// Knows nothing about kinetics.xml/the kinetics maps -
+// columns, and species profiles.
 // ReadOutput/Prepare/PrepareHeterogeneous never touch anything from the 
 // kinetics*.xml, which is what allows UpdateOutput to exist.
+// PostProcessors may be built using Output.xml only if profiles are the 
+// required variable. It is recommended to build with kinetics anyway.
 class OutputReader {
  public:
   OutputReader(void);
@@ -63,27 +64,22 @@ class OutputReader {
 
   bool HasOutput() const { return is_output_available_; }
 
-  // --- read accessors added for Python (goal: getSpeciesProfile/getTemperatureProfile/
-  // getIndependentVariableProfile), all sourced purely from Output.xml - no kinetics
-  // dependency. mw_species_/species_names_unsorted_ already existed as raw parse
-  // output before this class existed; they just weren't exposed anywhere.
   const std::vector<double>& mwSpecies() const { return mw_species_; }
   const std::vector<std::string>& speciesNames() const { return species_names_unsorted_; }
   int SpeciesIndexFromName(const std::string& name) const;
 
-  // Returns (independent_variable, profile) for one species. basis is "mass" or "moles".
+  // Returns (independent_variable, profile) for one species. basis is "mass" or "moles"
+  // for mass fractions or mole fractions.
   std::pair<std::vector<double>, std::vector<double>> GetSpeciesProfile(
       const std::string& name, const std::string& basis) const;
 
-  // additional[0] by convention (OpenSMOKEpp always writes the run's natural
-  // abscissa - time for a reactor, a spatial coordinate for a flame - as the
-  // first <additional> column); same convention Soot/SpeciesClass already use.
+  // additional[0] column, corresponding to either time or axial coordinate.
+  // This is the column you work with when calling local/region ROPA/Sensitivity.
   const std::vector<double>& GetIndependentVariableProfile() const;
 
-  // Looks up a named <additional> column (substring match against the stored
-  // "name [unit]" strings, e.g. "temperature", "pressure", "density",
-  // "viscosity", "fvSoot", "YSoot", ...). The one implementation behind every
-  // named PostProcessor getter (getTemperatureProfile, getPressureProfile, ...).
+  // Looks up a named <additional> column.
+  // Shared implementation for functions like GetTemperatureProfile,
+  // GetPressureProfile, etc.
   const std::vector<double>& AdditionalProfile(const std::string& key) const;
 
   int number_of_abscissas_;

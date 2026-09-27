@@ -15,10 +15,9 @@ from .pySMOKEPostProcessor import (
 )
 
 # np.trapz was removed in numpy 2.0 (renamed np.trapezoid); np.trapezoid does not exist
-# before numpy 2.0. environment.yml only pins numpy>=1.20, so support both - and don't
-# assume the env stays on whatever numpy pip/conda happened to resolve today: an
-# unrelated `conda install <package>` can pull in a newer numpy as a dependency and
-# silently drop trapz (this is what actually happened here - see conda-meta/history).
+# before numpy 2.0. environment.yml requires numpy>=1.20, so support both.
+# An unrelated `conda install <package>` (es seaborn) can shadow the error by installing
+#  a newer numpy
 _trapz = getattr(np, "trapezoid", None) or np.trapz
 
 
@@ -27,8 +26,7 @@ class PostProcessor:
     Main Class of the package, needed to call the C++ backend.
 
     Buildable from kinetics only, output only, or both - a method that needs a
-    missing input raises a clear RuntimeError (see _require_kinetics/_require_output)
-    instead of segfaulting or silently returning nonsense.
+    missing input raises a clear RuntimeError (see _require_kinetics/_require_output).
 
     Attributes:
         db: PostProcessorCore, the C++ orchestrator owning both the kinetics and
@@ -38,12 +36,12 @@ class PostProcessor:
             never loaded).
         km: KineticMapReader_Gas (pybind object) once kinetics is loaded, else None.
         kmhet: whichever phase-2 kinetics reader is loaded - KineticMapReader_Surface/
-            _Liquid/_Solid - else None. Renamed from `kms`: it now covers any
-            non-gas phase, not just Surface.
+            _Liquid/_Solid - else None.
         isHeterogeneous: True when the loaded mechanism has a *surface* phase
             specifically (existing call sites, e.g. RateOfProductionAnalysis_Surface,
             branch on this to mean "use the *_Surface widgets"); a Liquid/Solid
             phase-2 leaves this False. Use db.phase2Kind() for the general case.
+            # TODO this should be extended/modified for Liquid/Solid
     """
 
     def __init__(
@@ -78,18 +76,17 @@ class PostProcessor:
             self.db.readFileResults(outputFolder, self.isHeterogeneous)
 
         if self.db.hasKinetics() and self.db.hasOutput():
-            # Raw <SootProperties> (PolimiSoot BIN properties). The optional block is
-            # parsed while reading the kinetics.xml; self.soot is always present once
-            # both inputs are loaded, self.soot.sootAvailable() is False when the
-            # mechanism has no soot bins. Access the per-bin arrays directly, e.g.
-            # self.soot.dpp().
+            # Raw <SootProperties> (PolimiSoot BIN properties). 
+            # The optional block is parsed while reading the kinetics.xml; 
+            # self.soot is always present once both inputs are loaded, 
+            # self.soot.sootAvailable() is False when the mechanism has no soot bins. 
+            # Access the per-bin arrays directly, e.g. self.soot.dpp().
             self.soot = Soot()
             self.soot.setResults(self.db)
 
-            # One-row-per-bin view of the whole <SootProperties> block. Column names
-            # match OpenSMOKE's BinProperties.txt so the two are directly comparable;
-            # Bin_index is the bin's species index in the gas-phase scheme, Bin_name
-            # its resolved species name. None when the mechanism has no soot bins.
+            # For convenience, the BinProperties is reconstructed from the kinetics.xml
+            # as a pandas.DataFrame (if available).
+            # None when the mechanism has no soot bins.
             self.dfSootProperties = self._build_soot_properties_dataframe()
 
     def _require_kinetics(self, method_name: str) -> None:
@@ -111,8 +108,9 @@ class PostProcessor:
     def updateOutput(self, outputFolder: str) -> None:
         """
         Re-points this PostProcessor at a different Output.xml under the same
-        mechanism, without re-parsing kinetics - for the common case of one
-        kinetic mechanism run against many Output folders.
+        mechanism, without re-parsing kinetics.
+        To be used for parametric analyses or comparison case-to-case
+        with a fixed mechanism.
 
         Requires an output to already be loaded (outputFolder was given to
         __init__, or a previous updateOutput call succeeded); use
@@ -124,9 +122,11 @@ class PostProcessor:
 
     def getSpeciesProfile(self, name: str, basis: str = "mass", as_dataframe: bool = False):
         """
-        (independent_variable, profile) for one species, read straight from
-        Output.xml - no kinetics.xml dependency (Output.xml already carries each
-        species' own MW, used for the mass<->mole conversion).
+        (independent_variable, profile) tuple for one species, 
+        read from Output.xml - no kinetics.xml dependency.
+        These methods are the only callables in case the pp was built without kinetics.
+        The independent_variable is to be interpreted as time for batch reactors, space for
+        flames, and it depends on input setup for plug flow reactors (@Length vs @ResidenceTime)
 
         Args:
             name: species name.
@@ -141,8 +141,10 @@ class PostProcessor:
         return np.array(x), np.array(y)
 
     def getIndependentVariableProfile(self, as_dataframe: bool = False):
-        """Time for a reactor, the axial/spatial coordinate for a flame - whichever
-        OpenSMOKEpp wrote as the first <additional> column of this Output.xml."""
+        """
+        The independent_variable is to be interpreted as time for batch reactors, space for
+        flames, and it depends on input setup for plug flow reactors (@Length vs @ResidenceTime)
+        """
         self._require_output("getIndependentVariableProfile")
         x = np.array(self.db.getIndependentVariableProfile())
         if as_dataframe:
@@ -150,9 +152,10 @@ class PostProcessor:
         return x
 
     def _getAdditionalProfile(self, key: str, as_dataframe: bool = False):
-        """Shared implementation behind the named profile getters below - not meant
-        to be called directly with an arbitrary column name, callers should not need
-        to know the <additional> column names Output.xml happens to use."""
+        """Shared implementation behind the named profile getters below.
+        This is a common interface to get the profiles of the quantities in the 
+        <additional> XML leaf.
+        """
         self._require_output(key)
         x = self.getIndependentVariableProfile()
         y = np.array(self.db.additionalProfile(key))
@@ -172,6 +175,40 @@ class PostProcessor:
     def getViscosityProfile(self, as_dataframe: bool = False):
         return self._getAdditionalProfile("viscosity", as_dataframe)
 
+    # LG this is likely from previous OpenSMOKE versions, at the moment I think
+    #    no solver prints the YSoot in the additional columns.
+    def getYSootProfile(self, as_dataframe: bool = False): 
+        return self._getAdditionalProfile("YSoot", as_dataframe)
+
+
+    def _getAveragedSootProfile(
+        self,
+        key: str,
+        prop,
+        as_dataframe: bool = False,
+        min_section: int = 5,
+        weighting: str = "mass",
+    ):
+        """Shared implementation behind the averaged soot getters: `prop` is a
+        per-BIN property (one value per BIN, e.g. self.soot.htoc()), averaged along
+        the abscissa over the BINs with Bin_section >= min_section. weighting="mass"
+        weighs each BIN by its soot mass, "carbon" by its moles of carbon. NaN where
+        there is no soot.
+        Note: default weighting should be 'carbon' only for H/C ratio
+        Args:
+            key:
+
+        """
+        self._require_output(key)
+        cols = self.soot.averagedProfile(prop, min_section, weighting)
+        x = np.array(cols["abscissa"])
+        y = np.array(cols["mean"])
+        if as_dataframe:
+            return pd.DataFrame(
+                {key: y, "soot_mass[kg/m3]": np.array(cols["mass_kg_per_m3"])}, index=x
+            )
+        return x, y
+    
     def getFvSootProfile(self, as_dataframe: bool = False, min_section: int = 5):
         """Soot volume fraction [-] along the abscissa.
         Needs a <SootProperties> block."""
@@ -189,8 +226,7 @@ class PostProcessor:
             return pd.DataFrame({"fv[-]": fv, "soot_mass[kg/m3]": mass}, index=x)
         return x, fv
 
-    def getYSootProfile(self, as_dataframe: bool = False):
-        return self._getAdditionalProfile("YSoot", as_dataframe)
+
 
     def getSSASootProfile(self, as_dataframe: bool = False, min_section: int = 5):
         """Mean soot specific surface area [m2/kg] along the abscissa, mass-weighted
@@ -201,30 +237,7 @@ class PostProcessor:
             "SSA[m2/kg]", self.soot.ssa(min_section), as_dataframe, min_section, "mass"
         )
 
-    def _getAveragedSootProfile(
-        self,
-        key: str,
-        prop,
-        as_dataframe: bool = False,
-        min_section: int = 5,
-        weighting: str = "mass",
-    ):
-        """Shared implementation behind the averaged soot getters: `prop` is a
-        per-BIN property (one value per BIN, e.g. self.soot.htoc()), averaged along
-        the abscissa over the BINs with Bin_section >= min_section. weighting="mass"
-        weighs each BIN by its soot mass, "carbon" by its moles of carbon. NaN where
-        there is no soot.
-        Note: default weighting should be 'carbon' only for H/C ratio
-        """
-        self._require_output(key)
-        cols = self.soot.averagedProfile(prop, min_section, weighting)
-        x = np.array(cols["abscissa"])
-        y = np.array(cols["mean"])
-        if as_dataframe:
-            return pd.DataFrame(
-                {key: y, "soot_mass[kg/m3]": np.array(cols["mass_kg_per_m3"])}, index=x
-            )
-        return x, y
+
 
     def getHtoCSootProfile(
         self, as_dataframe: bool = False, min_section: int = 5, weighting: str = "mass"
@@ -267,7 +280,7 @@ class PostProcessor:
 
     def SootPSD(
         self,
-        local_value: float = 0.0,
+        local_value: float,
         particle_type: str = "all",
         diameter_type: str = "dmob",
         min_section: int = 5,
@@ -275,19 +288,18 @@ class PostProcessor:
         merge_tol: float = 0.20,
     ):
         """Soot particle size distribution.
+        Pre-requisite: the mechanism has to be compiled with SootProperties enabled.
 
         particle_type: "all" keeps every BIN with Bin_section >= min_section
-            (numPP <= 0 nascent bins counted as one spherule); 
+            (BINliq are counted as numPP=1); 
             "primary" keeps only the primary particles (PPSD).
         diameter_type: "dmob" mobility diameter dm = Dpp*numPP**mobility_exponent,
             "dpp" primary-particle diameter, "dcol" collision diameter,
             "dva" volume-equivalent sphere diameter.
-        local_value picks the profile point like local ROPA (first point whose
-            abscissa >= local_value; abscissa is time for a reactor, a coordinate
-            for a flame).
+        local_value: float, coordinate at which the analysis is performed.
 
         Returns a DataFrame (<d>[nm], N[#/m3], dN/dlog10(<d>[nm])[#/m3], ...); the
-        gas state used is in df.attrs. Needs a <SootProperties> block.
+        gas state used is in df.attrs.
         """
         return compute_psd(
             self,
@@ -812,8 +824,6 @@ class PostProcessor:
 
         return formationRates
 
-    # [LG] This function seems unused and redundant with respect to function within the sensitivity class in C++
-    #       plus it is not updated for heterogeneous stuff.
     def SensitivityCoefficients(
         self,
         target: str,

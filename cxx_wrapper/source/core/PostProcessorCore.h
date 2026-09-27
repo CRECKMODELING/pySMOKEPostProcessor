@@ -46,7 +46,9 @@
 #include "KineticMapReader_Surface.h"
 #include "OutputReader.h"
 
-// A mechanism has gas + at most one heterogeneous phase kinetics.
+// A mechanism has gas + at most one heterogeneous phase kinetics,
+// OpenSMOKE (v0.24) gives an error at mechanism compilation time
+// if two heterogeneous phases are selected.
 // LoadKinetics auto-detects this by which kinetics file is present 
 // (kinetics.surface.xml / kinetics.liquid.xml / kinetics.solid.xml)
 // and records which one here.
@@ -57,19 +59,22 @@ enum class Phase2Kind { None, Surface, Liquid, Solid };
 // (data_->kineticsMapXML, data_->omega, data_->gasKinetics()->soot_bin_*, ...) -
 // inherited from OutputReader for the output half; most kinetics-half fields
 // are copied out of the owned KineticMapReader_* objects, except phase-specific
-// data (e.g. soot, gas-only) that widgets read straight off gasKinetics()/etc.
-// instead of paying for a duplicate copy here.
+// data (e.g. soot, gas-only) that are read straight off gasKinetics()/etc.
+// instead of duplicating it here.
 //
 // Construction is willingly partial: LoadKinetics()
 // and ReadOutput()/UpdateOutput() (inherited from OutputReader) are
 // independent calls, and a caller may use only one of them. 
 // This is intended for possible uses where the user wants to generate
-// the PostProcessor once - with a fixed kinetic mechanism - and then update
-// the Output multiple times, e.g. for parsing results from a 
-// ParametricAnalysis.
-// HasKinetics()/HasOutput()/HasPhase2Kinetics() report what is actually 
-// loaded so a widget's SetResults() can raise a clear error instead of 
-// segfaulting on a null/half-built object.
+// the PostProcessor once using a fixed kinetic mechanism and then update
+// the Output multiple times, e.g. for parsing results from a ParametricAnalysis.
+// HasKinetics()/HasOutput()/HasPhase2Kinetics() report what is actually loaded.
+
+// Why this exists: codes even in the examples were rebuilding the pp object from scratch. 
+// This is not efficient, and this modification lead to a rough /4 reduction in time 
+// for the file ReactionClasses_FDI (ca 8-10 min to 2)
+// Another case: the DepositionPlot requires a long series of calls to the pp at different
+// locations, and the required memory was building up over time, reaching above 8 GB of RAM.
 class PostProcessorCore : public OutputReader {
  public:
   PostProcessorCore(void);
@@ -79,7 +84,7 @@ class PostProcessorCore : public OutputReader {
 
   // Hide the base versions so calls through a PostProcessorCore also run
   // ValidateConsistency() once both sides are loaded. 
-  // Every call site holds a PostProcessorCore*, never an OutputReader*
+  // Every call passes through a PostProcessorCore*, never an OutputReader*
   bool ReadOutput(const std::string& folder_name, bool isHeterogeneous);
   bool UpdateOutput(const std::string& folder_name);
 
@@ -124,7 +129,7 @@ class PostProcessorCore : public OutputReader {
 
   // ---- Optional mechanism blocks
   // Species-class (<SpeciesClasses>) and reaction-class (<ReactionClasses>)
-  // metadata are NOT mirrored here either, same reasoning as soot below:
+  // metadata are NOT mirrored here:
   // HasSpeciesClasses()/SpeciesClassNames()/SpeciesClassMembers()/SpeciesToClass()
   // and HasReactionClasses()/ReactionMainClass()/ReactionSubClass() are already
   // public reference-returning accessors on KineticMapReaderBase (the common

@@ -7,6 +7,7 @@
 |        |_|                                                              |
 |                                                                         |
 |   Authors: Lorenzo Giardini <lorenzo.giardini@polimi.it>                |
+|            Luna Pratali Maffei <luna.pratali@polimi.it>                 |
 |   CRECK Modeling Group <http://creckmodeling.chem.polimi.it>            |
 |   Department of Chemistry, Materials and Chemical Engineering           |
 |   Politecnico di Milano                                                 |
@@ -43,8 +44,8 @@
 //
 // The ReactionClasses block and the mechanism stoichiometric map are read once.
 // Two things that reaction-class flux post-processing needs:
-//  - which reactions are the *same* physical reaction written twice (an explicit
-//    reversible forward/backward pair, or an outright duplicate declaration) -
+//  - which reactions are the *same* physical reaction written twice
+//    (forward/backward pair, or a duplicate reaction) -
 //    decided from the mechanism's stoichiometric matrix (species index +
 //    coefficient per reaction side)
 //  - merging one or more species' ROPA (reaction_index, coefficient) pairs onto
@@ -75,12 +76,13 @@ class ReactionClass {
   // dealing with fw/bw reactions
   //
   // The representative is chosen per call, not fixed by the mechanism alone
-  // (e.g. recombinations and decomposition being opposite of each other)
+  // (e.g. recombinations and bond scissions being opposite of each other)
   // which direction should represent the merged flux is then a property of 
   // current local conditions, not of the mechanism only. Within each
   // group, the choice is: restrict to classified (non-UNSORTED) members if any
   // exist, then take whichever member's |coefficient| is largest in any of the
-  // provided species columns (ties go to the smallest reaction index - very unlikely).
+  // provided species columns.
+  // Perfect ties go to the smallest reaction index - very unlikely to occur.
   //
   // representative_indices gets one entry per group touched by any species.
   // merged_coefficients gets one entry per species, each the same length as

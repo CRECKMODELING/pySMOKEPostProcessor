@@ -149,7 +149,7 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
       .def("outputSpeciesIndexFromName", &PostProcessorCore::SpeciesIndexFromName,
            py::arg("name"), py::call_guard<py::gil_scoped_release>())
       .def("getSpeciesProfile", &PostProcessorCore::GetSpeciesProfile, py::arg("name"),
-           py::arg("basis"), py::call_guard<py::gil_scoped_release>())
+           py::arg("basis")="moles", py::call_guard<py::gil_scoped_release>())
       .def("getIndependentVariableProfile",
            &PostProcessorCore::GetIndependentVariableProfile,
            py::call_guard<py::gil_scoped_release>())

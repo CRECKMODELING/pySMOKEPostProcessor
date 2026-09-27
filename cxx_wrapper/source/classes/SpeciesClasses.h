@@ -40,8 +40,6 @@
 #include "core/PostProcessorCore.h"
 
 // Post-processing of the <SpeciesClasses> block.
-// The SpeciesClasses block in the kinetics.xml file is read once, when postprocessor is built;
-// the class is meant to be constructed once and reused for many queries/timesteps.
 class SpeciesClass {
  public:
   SpeciesClass();
@@ -60,8 +58,8 @@ class SpeciesClass {
   // Same numeric core as ElementalDistribution, one row per species instead of
   // per class - does NOT require a <SpeciesClasses> block (every species in the
   // mechanism is covered, classified or not). ElementalDistribution calls this
-  // internally and aggregates by class, so there is exactly one place that
-  // computes moles-of-element-per-species.
+  // internally and aggregates by class afterwards.
+  // The location of this function is undoubtedly wrong, it should be on his own.
   void ElementMolesBySpecies(const std::string element);
 
   inline const std::vector<std::string>& speciesNames() const { return species_names_; }

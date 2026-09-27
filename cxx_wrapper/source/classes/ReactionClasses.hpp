@@ -7,6 +7,7 @@
 |        |_|                                                              |
 |                                                                         |
 |   Authors: Lorenzo Giardini <lorenzo.giardini@polimi.it>                |
+|            Luna Pratali Maffei <luna.pratali@polimi.it>                 |
 |   CRECK Modeling Group <http://creckmodeling.chem.polimi.it>            |
 |   Department of Chemistry, Materials and Chemical Engineering           |
 |   Politecnico di Milano                                                 |
@@ -53,7 +54,7 @@ void ReactionClass::SetHeterogeneous(const bool heterogeneous) {
 void ReactionClass::SetResults(PostProcessorCore* data) {
   if (!data->HasKinetics()) {
     throw std::invalid_argument(
-        "ReactionClass::SetResults: no kinetics mechanism loaded on this PostProcessorCore");
+        "ReactionClass::SetResults: no kinetics mechanism loaded on this PostProcessor");
   }
   data_ = data;
   ReadReactionClasses();
@@ -90,8 +91,7 @@ void ReactionClass::ReadReactionClasses() {
 }
 
 // Serializes one reaction's reactant or product side, sorted by species index, from
-// the mechanism stoichiometric matrix (species index + coefficient per
-// reaction)
+// the mechanism stoichiometric matrix (species index + coefficient per reaction)
 std::string ReactionClass::SerializeReactionSide(
     const Eigen::SparseMatrix<double, Eigen::RowMajor>& matrix, const int row) {
   std::vector<std::pair<int, double>> entries;
@@ -106,9 +106,7 @@ std::string ReactionClass::SerializeReactionSide(
   return oss.str();
 }
 
-// This only groups reactions by the mechanism stoichiometric matrix (static, computed once here); 
-// it does not decide which member represents the group in a report - that choice depends 
-// on the ROPA result being merged and is made per call, see MergeDuplicates().
+// This functions groups reactions by the mechanism stoichiometric matrix
 void ReactionClass::ComputeMergeGroups() {
   const unsigned int nr = static_cast<unsigned int>(main_class_.size());
 
@@ -117,7 +115,7 @@ void ReactionClass::ComputeMergeGroups() {
   // walks that reaction's species, not a column's.
   Eigen::SparseMatrix<double, Eigen::RowMajor> reactants;
   Eigen::SparseMatrix<double, Eigen::RowMajor> products;
-  if (heterogeneous_ == true) {
+  if (heterogeneous_ == true) { // Not general for liquid/solid but ReactionClasses are not enabled there (yet?)
     reactants =
         data_->kineticsMapSurfaceXML->stoichiometry().stoichiometric_matrix_reactants();
     products =

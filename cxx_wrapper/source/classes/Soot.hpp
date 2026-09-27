@@ -40,7 +40,6 @@
 #include <stdexcept>
 
 namespace {
-constexpr double NA = 6.02214076e23;  // #/mol
 constexpr double PI = 3.14159265358979323846;
 }  // namespace
 
@@ -85,7 +84,7 @@ std::vector<double> Soot::BinMassFractionToMolarConcentration(
 
 // Specific surface area of every BIN [m2/kg]: pi * Dpp^2 * numPP / Bin_mass.
 // Only BINs with Bin_section >= min_section are soot, the rest stay NaN; among
-// those, numPP <= 0 (nascent/liquid-like BINs) counts as one spherule.
+// those, numPP <= 0 (nascent/liquid-like BINs) counts as numPP = 1.
 std::vector<double> Soot::SpecificSurfaceArea(const int min_section) const {
   const unsigned int nbins = data_->gasKinetics()->soot_number_of_bins_;
   const auto& dpp = data_->gasKinetics()->soot_bin_dpp_;
@@ -113,13 +112,19 @@ Soot::BuildDistribution(const std::vector<unsigned int>& bins,
   const double P = data_->additional[data_->index_P][point];
   const double MWmix = data_->additional[data_->index_MW][point];
   const double rho = data_->AdditionalProfile("density")[point];  // kg/m3
-  const std::vector<double> C_all = BinMassFractionToMolarConcentration(point);
+  const auto& bin_index = data_->gasKinetics()->soot_bin_index_;
+  const auto& bin_mass = data_->gasKinetics()->soot_bin_mass_;  // kg per particle
 
+  // N_i = rho * omega_i / Bin_mass_i [#/m3]. Uses the BIN particle mass rather than
+  // MW_i / N_A, so N matches OpenSMOKE's PolimiSoot N(tot); the two differ by ~6e-5
+  // because of the digits carried by the BinProperties.
   const unsigned int n = static_cast<unsigned int>(bins.size());
-  std::vector<double> d(n), N(n);
+  std::vector<double> d(n), N(n, 0.0);
   for (unsigned int k = 0; k < n; k++) {
     d[k] = coord[k];
-    N[k] = C_all[bins[k]] * NA;  // #/m3
+    const unsigned int sp = bin_index[bins[k]];
+    if (sp < data_->omega.size() && bin_mass[bins[k]] > 0.0)
+      N[k] = rho * data_->omega[sp][point] / bin_mass[bins[k]];
   }
 
   std::vector<unsigned int> order(n);

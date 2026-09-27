@@ -41,12 +41,11 @@
 
 // Gas-phase kinetics reader: kinetics.xml + reaction_names.xml. Owns the
 // OpenSMOKEpp gas thermo/kinetics maps (raw pointers, never deleted).
-// Also owns the mechanism-wide <SootProperties> block (soot is always
-// gas-phase, never added to the other phase readers) and the
-// ReactionsAssociatedToSpecies/isReactantProduct helpers, moved here verbatim
-// from ProfilesDatabase since they only ever touched the gas kinetics map.
+// Also owns the mechanism-wide <SootProperties> block 
+// and the ReactionsAssociatedToSpecies/isReactantProduct helpers, 
+// moved here from ProfilesDatabase since they only ever touched the gas kinetics map.
 // Note: these are helpers related to the FluxAnalysis.
-//       if the FluxAnalysis is extended to other phases, this has to be updated
+//       if the FluxAnalysis is extended to other phases, this has to be updated.
 class KineticMapReader_Gas : public KineticMapReaderBase {
  public:
   KineticMapReader_Gas();
@@ -61,7 +60,7 @@ class KineticMapReader_Gas : public KineticMapReaderBase {
 
   // In SensitivityAnalysis, FallOff/CAB Reactions also undergo sensitivity on
   // kInf to get information on the fall-off behavior (e.g. if kInf is high in sensi,
-  // the reaction is not in fall-off).
+  // the reaction is not in fall-off and vice-versa).
   // The index of these kInfs goes beyond the number of reactions, and therefore
   // requires its own dedicated parsing
   std::string FormattedReactionNameFromIndex(unsigned int index) const override;

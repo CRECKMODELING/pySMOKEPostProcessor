@@ -34,6 +34,7 @@
 |                                                                         |
 \*-----------------------------------------------------------------------*/
 
+// Constructor
 OutputReader::OutputReader(void) {
   index_density = -1;
   index_velocity = -1;
@@ -45,12 +46,14 @@ OutputReader::OutputReader(void) {
   is_output_available_ = false;
 }
 
+// Destructor
 OutputReader::~OutputReader(void) {}
 
 bool OutputReader::ReadOutput(const std::string& folder_name, bool isHeterogeneous) {
   path_folder_results_ = folder_name;
   boost::filesystem::path path_results = path_folder_results_ / "Output.xml";
-  // Results are all together in the Output.xml for every phase
+  // In all phases, the Output.xml contains the output for all phases
+  // E.g. there is no Output.surface.xml like kinetics files do.
 
   if (!boost::filesystem::exists(path_results)) {
     throw std::invalid_argument("Output folder does not contain the Output.xml file");
@@ -308,12 +311,16 @@ void OutputReader::PrepareHeterogeneous() {
         if (dummy == "area-over-volume") index_area_over_volume = j;
         if (dummy == "CARBON") index_surface_sites_concentration = j;
         /*
-        About the "CARBON" name: I added its print in the OpenSMOKEpp library,and it is the sites concentration in kmol/m2.
-        For C-deposition, it is ok, while for catalytic-type problems, it is not: in the input, the surface would be called
-        something like "Surface-NI", and the printed name would then be just "NI". It might be better to look not for the
-        exact name but to print the "Surface-" keyword and look for anything that starts with that.
+        LG: About the "CARBON" name: I added its print in the OpenSMOKEpp library,
+        and it is the sites concentration in kmol/m2.
+        For C-deposition, it is ok, while for catalytic-type problems, it is not: 
+        in the input, the surface would be called something like "Surface-NI", 
+        and the printed name would then be just "NI". 
+        It might be better to look not for the exact name but to print the "Surface-" 
+        keyword and look for anything that starts with that.
         Further note: in OpenSMOKEpp, AC allowed to have multiple surface phases.
                       This is not considered here, and also not important at the moment.
+        TODO: fix this better.
         */
 
         stream >> dummy;
@@ -324,6 +331,7 @@ void OutputReader::PrepareHeterogeneous() {
   }
 
   // Species (gas mass fractions)
+  // Note the different name wrt homogeneous (mass-fractions vs gas-mass-fractions)
   std::vector<std::string> string_list_massfractions_unsorted;
   {
     boost::optional<boost::property_tree::ptree&> child =
@@ -534,7 +542,8 @@ void OutputReader::PrepareHeterogeneous() {
   }
 
   // Reactants conversion (probably not required in general)
-  // This is wrong as there is no mass loss correction. Not a priority right now but it has to be changed. I'll do it eventually.
+  // LG This is wrong as there is no mass loss correction. 
+  // TODO fix this (not important)
   {
     for (unsigned int j = 0; j < number_of_gas_species; j++) {
       if (omega[j][0] > 1e-8) {
@@ -549,7 +558,7 @@ void OutputReader::PrepareHeterogeneous() {
   }
 }
 
-// Unused function, probably old, can we delete this?
+// LG Unused function, probably old, can we delete this?
 void OutputReader::SpeciesCoarsening(const double threshold) {
   current_sorted_index.resize(0);
   for (unsigned int k = 0; k < string_list_massfractions_sorted.size(); k++)

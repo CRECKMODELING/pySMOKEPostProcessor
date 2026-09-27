@@ -44,14 +44,13 @@
 
 #include "core/PostProcessorCore.h"
 
-// Soot post-processing of the mechanism's <SootProperties> optional leaf
-
+// Post-processing of the mechanism's <SootProperties> optional leaf
 class Soot {
  public:
   Soot();
   void SetResults(PostProcessorCore* data);
 
-  // True when kinetics.xml actually carried a <SootProperties> block.
+  // True when kinetics.xml actually carries a <SootProperties> block.
   // Basically true for any CRECK-compiled model 2024+
   inline bool sootAvailable() const {
     return data_ != nullptr && data_->gasKinetics()->soot_available_;
@@ -61,8 +60,7 @@ class Soot {
     return data_->gasKinetics()->soot_number_of_bins_;
   }
 
-  // Properties (as wrote into the kinetics.xml from BinProperties.txt at mech
-  // compile-time)
+  // Properties as wrote into the kinetics.xml from BinProperties.txt
   inline const std::vector<unsigned int>& index() const {
     return data_->gasKinetics()->soot_bin_index_;
   }
@@ -110,7 +108,7 @@ class Soot {
   }
 
   // Soot Particle Size Distribution at one abscissa location
-  // abscissa = additional[0] (time for a reactor, spatial coordinate for a flame)
+  // abscissa = additional[0]
   //
   //   particle_type = "all"     -> all Soot particles (e.g. liq, pp, aggs)
   //                   "primary" -> pp only (numPP == 1)
@@ -126,7 +124,7 @@ class Soot {
   //   meta:    the scalar gas state actually used - abscissa, T, P, rho, MW
   //
   // Per-bin number density computed from ProfilesDatabase:
-  // N_i = omega_i * rho / MW_i * 1000 * N_A  [#/m3].
+  // N_i = omega_i * rho / Bin_mass_i  [#/m3]
   // Near-equal diameters are merged into fixed sections
   // (representative = geometric mean) before dN/dlog10(d) is formed.
   std::pair<std::map<std::string, std::vector<double>>, std::map<std::string, double>>
