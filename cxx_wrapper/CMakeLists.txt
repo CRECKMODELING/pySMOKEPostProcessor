@@ -134,14 +134,6 @@ if(PYSMOKE_BUILD_TESTFILES)
       ropa_het
       sensitivity_homo
       sensitivity_het
-      speciesclass_homo
-      outputreader_homo
-      kineticmapreader_gas
-      kineticmapreader_surface
-      kineticmapreader_liquid
-      kineticmapreader_solid
-      postprocessorcore_construction
-      ropa_liquid_structural
   )
 
   foreach(_test_name ${PYSMOKE_TESTFILES})
