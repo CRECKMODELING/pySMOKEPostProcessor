@@ -15,6 +15,7 @@
 \usepackage{listings}
 \usepackage{caption}
 \usepackage{longtable}
+\usepackage{amsmath}
 \usepackage{array}
 \usepackage[colorlinks=true,linkcolor=blue!55!black,citecolor=blue!55!black,
             urlcolor=blue!55!black]{hyperref}
@@ -123,8 +124,7 @@ automatically by the CMake configuration described in this chapter.
 \begin{itemize}
 \item A C++14-capable compiler (GCC $\geq$ 9, Clang $\geq$ 10, or MSVC 2019+
   on Windows).
-\item \href{https://docs.conda.io/}{conda} or \href{https://mamba.readthedocs.io/}{mamba},
-  used to provision the native (non-Python) dependencies.
+\item \href{https://docs.conda.io/}{conda} used for the native (non-Python) dependencies.
 \item CMake $\geq$ 3.16.
 \item Python $\geq$ 3.10.
 \item Network access for the first build (to fetch OpenSMOKE++ headers and,
@@ -155,10 +155,10 @@ conda activate pp            # environment name as declared in environment.yml
 
 # 3. Install the package
 pip install .                  # end users
-pip install -e .               # developers (editable install, recompiles
-                                # the extension on every `pip install -e .`
-                                # after a C++ change; Python-only changes are
-                                # picked up immediately, no reinstall needed)
+pip install -e .            # developers (editable install, recompiles
+                            # the extension on every `pip install -e .`
+                            # after a C++ change; Python-only changes are
+                            # picked up immediately, no reinstall needed)
 \end{lstlisting}
 
 The first build actually takes a lot of times due to the large package. During \pkg{pip install}, the
@@ -230,7 +230,7 @@ import pySMOKEPostProcessor
 print("Installation successful!")
 \end{lstlisting}
 
-A more complete check is to run one of the bundled examples (fixture data
+A more complete check is to run one of the bundled examples (example data
 ships with the repository under \pkg{examples/data/}):
 
 \begin{lstlisting}[language=bash]
@@ -247,7 +247,7 @@ python RateOfProductionAnalysis_1.py
   \pkg{conda install eigen}
 \item[OpenSMOKE++ fetch fails (git auth)] \pkg{conda install git} and ensure
   the account has access to the private OpenSMOKE++ repository, or set
-  \pkg{OpenSMOKEpp\_ROOT} to a local checkout (Section~\ref{sec:opensmoke-headers})
+  \pkg{OpenSMOKEpp\_ROOT} to a local checkout (Section~\ref{sec:opensmoke-headers}).
 \item[Build fails with unclear errors] rebuild verbosely:
   \pkg{pip install . -vvv}, or force a clean build with
   \pkg{pip install . --no-build-isolation -v}
@@ -262,7 +262,7 @@ conda env remove -n pp
 \end{lstlisting}
 
 % =============================================================================
-\part{Usage Guide}
+\part{User Guide}
 % =============================================================================
 
 \chapter{Overview}
@@ -322,13 +322,12 @@ Every entry links to its full description later in this part.
 \pkg{.updateOutput(outputFolder)} & re-point at a new \pkg{Output.xml}, same mechanism, no re-parse \\
 \pkg{.getSpeciesProfile(name, basis, as\_dataframe)} & raw species mass/mole-fraction profile \\
 \pkg{.getIndependentVariableProfile(as\_dataframe)} & time / spatial coordinate profile \\
-\pkg{.getTemperatureProfile} / \pkg{.getPressureProfile} / \pkg{.getDensityProfile} / \pkg{.getViscosityProfile} / \pkg{.getFvSootProfile} / \pkg{.getYSootProfile} & raw \pkg{<additional>} column profiles \\
-\pkg{.RateOfProductionAnalysis(species, ropa\_type, ...)} & ROPA, homogeneous mechanism \\
-\pkg{.RateOfProductionAnalysis\_Surface(species, ropa\_type, ...)} & ROPA, gas or surface side of a coupled mechanism \\
+\pkg{.getTemperatureProfile} / \pkg{.getPressureProfile} / \pkg{.getDensityProfile} / \pkg{.getViscosityProfile} / \pkg{.getYSootProfile} & raw \pkg{<additional>} column profiles \\
+\pkg{.RateOfProductionAnalysis(species, ropa\_type, ..., heterogeneous\_reactions)} & ROPA, gas or (with \pkg{heterogeneous\_reactions=True}) surface ROPA on a mechanism \\
 \pkg{.RateOfProductionAnalysis2D(species, ropa\_type, ...)} & ROPA for 2D/3D simulations \\
 \pkg{.convert\_tomass(ropa\_coefficients, species)} & mole $\to$ mass unit conversion for a ROPA result \\
 \pkg{.GetReactionRates(reaction\_name/reaction\_index, ...)} & full-profile reaction rate(s) \\
-\pkg{.GetFormationRates(formation\_rate\_type, species, units)} & full-profile species formation rate \\
+\pkg{.GetFormationRates(formation\_rate\_type, species, units, heterogeneous\_reactions)} & full-profile species formation rate \\
 \pkg{.SensitivityAnalysis(target, sensitivity\_type, ...)} & sensitivity analysis, homogeneous mechanism \\
 \pkg{.SensitivityAnalysis\_Surface(target, ...)} & sensitivity analysis, coupled gas+surface mechanism \\
 \pkg{.SensitivityCoefficients(target, ...)} & \textit{time/coordinate evolution of the sensitivity coefficients} \\
@@ -338,8 +337,9 @@ Every entry links to its full description later in this part.
 \pkg{.FluxAnalysisByClass(element, flux\_analysis\_type, ...)} & class-to-class element flux matrix + graph \\
 \pkg{.dfSootProperties} & attribute: full \pkg{<SootProperties>} BIN table \\
 \pkg{.SootPSD(local\_value, particle\_type, diameter\_type, ...)} & soot particle size distribution \\
-\pkg{.reactionrategroups(rxnnames\_sr, xaxis, ...)} & rate profiles summed by named reaction group \\
-\pkg{.cumulativerates(xaxis, ropa\_dct, ...)} & full rate profiles expanded from a ROPA result \\
+\pkg{.getFvSootProfile(as\_dataframe, min\_section)} & soot volume fraction $f_v$ along the abscissa \\
+\pkg{.getSSASootProfile(as\_dataframe, min\_section)} & mean soot specific surface area along the abscissa \\
+\pkg{.getHtoCSootProfile(as\_dataframe, min\_section, weighting)} & mean soot H/C along the abscissa \\
 \bottomrule
 \end{longtable}
 \end{center}
@@ -352,27 +352,21 @@ Every entry links to its full description later in this part.
 \textbf{Call} & \textbf{Purpose} \\
 \midrule
 \endhead
-\pkg{reaction\_classes.assignclass(pp, classes\_definition, ...)} & assign mechanism reactions to user-defined classes \\
-\pkg{reaction\_classes.FluxByClass(...)} & aggregate ROPA results onto the reaction-class table \\
 \pkg{reaction\_classes.merge\_maps\_byspecies(sorted\_dfs\_dct, ...)} & combine several simulations' class-flux tables \\
 \pkg{reaction\_classes.FDI(sorted\_dfs\_dct, ...)} & Flux Diagnostic Index between simulations \\
-\pkg{script\_utils.get\_sortedrxns(pp, class\_groups\_file, ...)} & thin wrapper over \pkg{assignclass} \\
+\pkg{script\_utils.get\_sortedrxns(pp, class\_groups\_file, ...)} & classify a mechanism's reactions from its  \pkg{<ReactionClasses>} block \\
 \pkg{script\_utils.process\_classes(...)} & multi-species ROPA grouped by reaction class \\
 \pkg{script\_utils.cumulative\_rates(...)} & per-species cumulative rate tables \\
 \pkg{script\_utils.reactionrates\_byclasses(...)} & time-resolved rates summed by reaction class \\
 \pkg{plotting\_utilities.plot\_bars(data, ...)} & horizontal bar chart, ROPA/sensitivity dict \\
-\pkg{plotting\_utilities.plot\_multiple\_bars(ax, data, ...)} & grouped horizontal bar chart \\
 \pkg{plotting\_utilities.plot\_bars\_multiSimulation(data\_list, ...)} & grid of \pkg{plot\_bars} \\
 \pkg{plotting\_utilities.plot\_heatmap(sort\_df, ...)} & diverging-colormap heatmap \\
-\pkg{plotting\_utilities.save\_fig(fig, plt\_fld, ...)} & save a figure with a standard filename \\
 \pkg{plotting\_utilities.plot\_class\_distribution(data\_df, ...)} & stacked-area, per-class distribution \\
 \pkg{plotting\_utilities.plot\_areas(data\_df, ...)} & shaded-area / line plot, multi-column \pkg{DataFrame} \\
 \pkg{plotting\_utilities.plot\_distribution(df, ...)} & soot PSD line plot \\
 \pkg{elements\_balance(kineticFolder, resultsFolder, elements\_list, ...)} & element speciation stackplot \\
 \pkg{surfacereactions\_utilities.CumulativeDeposition(...)} & cumulative surface-deposition stackplot \\
 \pkg{surfacereactions\_utilities.CumulativeSootProduction(...)} & cumulative gas-phase soot stackplot \\
-\pkg{surfacereactions\_utilities.getTimeProfile / getROPAIntegralTimeHistory} & timestep grid / cumulative time integral \\
-\pkg{graph\_writer.GraphWriter(fluxAnalysisType)} & internal: builds the \pkg{graphviz.Digraph} for flux methods \\
 \bottomrule
 \end{longtable}
 \end{center}
@@ -388,8 +382,7 @@ stated otherwise) is a method of this class.
 
 Constructs a post-processor around a mechanism and/or a simulation output.
 Buildable from kinetics only, output only, or both --- calling a method that
-needs an input that was not supplied raises a clear \pkg{RuntimeError}
-(instead of segfaulting or returning nonsense).
+needs an input that was not supplied raises a \pkg{RuntimeError}.
 
 \begin{params}
 \item \pkg{kineticFolder} (\textit{str}, optional) --- path to the folder
@@ -417,8 +410,10 @@ needs an input that was not supplied raises a clear \pkg{RuntimeError}
   solid), if the mechanism has one, else \pkg{None}.
 \item \pkg{isHeterogeneous} (\textit{bool}) --- \pkg{True} specifically when
   the loaded mechanism has a \emph{surface} phase-2 (a liquid/solid phase-2
-  leaves this \pkg{False}; existing methods branch on this flag to pick the
-  \pkg{*\_Surface} widgets).
+  leaves this \pkg{False}); \pkg{SensitivityAnalysis\_Surface} branches on
+  this flag internally, and it is otherwise a convenient guard for user code
+  deciding whether to pass \pkg{heterogeneous\_reactions=True} to ROPA
+  methods.
 \item \pkg{soot} --- C++ \pkg{Soot} widget, always present once both
   kinetics and output are loaded; \pkg{soot.sootAvailable()} tells whether
   the mechanism actually has a \pkg{<SootProperties>} block.
@@ -449,7 +444,7 @@ kinetic mechanism.
 
 \begin{params}
 \item \pkg{name} (\textit{str}) --- species name.
-\item \pkg{basis} (\textit{str}) --- \pkg{"mass"} or \pkg{"moles"}.
+\item \pkg{basis} (\textit{str}) --- \pkg{"mass"} or \pkg{"mole"}.
 \item \pkg{as\_dataframe} (\textit{bool}) --- if \pkg{True}, return a
   single-column \pkg{DataFrame} indexed by the independent variable instead
   of a tuple.
@@ -464,12 +459,17 @@ whichever OpenSMOKE++ wrote as the abscissa of \pkg{Output.xml}.
 \returns \pkg{numpy.ndarray}, or a one-column \pkg{DataFrame} if
 \pkg{as\_dataframe=True}.
 
-\pymethod{getTemperatureProfile / getPressureProfile / getDensityProfile \\/ getViscosityProfile / getFvSootProfile / getYSootProfile(as\_dataframe=False)}
+\pymethod{getTemperatureProfile / getPressureProfile / getDensityProfile \\/ getViscosityProfile / getYSootProfile(as\_dataframe=False)}
 
-Six near-identical getters for the standard \pkg{<additional>}
-columns of \pkg{Output.xml} (temperature, pressure, density, viscosity, soot
-volume fraction, soot mass fraction). Same \pkg{as\_dataframe} flag as above.
+Five near-identical getters for standard \pkg{<additional>} columns of
+\pkg{Output.xml} (temperature, pressure, density, viscosity, soot mass
+fraction --- the last one is legacy: no current solver writes it). Same
+\pkg{as\_dataframe} flag as above.
 \returns \pkg{(x, y)} tuple of \pkg{numpy.ndarray}, or a \pkg{DataFrame}.
+
+Soot volume fraction is \emph{not} a raw \pkg{<additional>} column --- it is
+a computed, mass-weighted average over BINs, documented with the other soot
+getters in Chapter 9 (\pkg{getFvSootProfile}).
 
 \chapter{Rate of Production Analysis (ROPA)}
 
@@ -498,6 +498,11 @@ mechanism.
   lookup per returned reaction). Callers that only need indices/coefficients
   can set this \pkg{False} to skip the (cheap, but non-zero over large
   species $\times$ timestep loops) name resolution.
+\item \pkg{heterogeneous\_reactions} (\textit{bool}) --- run the ROPA on the
+  surface reaction set instead of the gas one, for a coupled gas+surface
+  mechanism (requires \pkg{pp.isHeterogeneous}); not supported together with
+  \pkg{two\_dimensions=True}, and \pkg{mass\_ropa} is not supported together
+  with this.
 \end{params}
 \returns \pkg{dict} with keys \pkg{"coefficients"} (\textit{list[float]}),
 \pkg{"reaction\_names"} (\textit{list[str]}, or \pkg{None} if
@@ -531,19 +536,16 @@ region_ropa = pp.RateOfProductionAnalysis(species="H2", ropa_type="region",
 \caption{The same H2 ROPA evaluated \texttt{local} at $t=0.001$\,s (left) vs.\ integrated over the \texttt{region} $t \in [0.0005, 0.0009]$\,s (right); note both the reaction set and the relative weights shift.}
 \end{figure}
 
-\pymethod{RateOfProductionAnalysis\_Surface(species, ropa\_type, local\_value=0, \\lower\_value=0, upper\_value=0, number\_of\_reactions=10, \\heterogeneous\_reactions=False, include\_names=True) -> dict}
+A coupled gas+surface (deposition) mechanism uses this same method with
+\pkg{heterogeneous\_reactions=True} to run the ROPA on the surface reaction
+set instead of a separate \pkg{\_Surface} call:
 
-Same as \pkg{RateOfProductionAnalysis}, for a coupled gas+surface
-(deposition) mechanism.
-
-\begin{params}
-\item \pkg{heterogeneous\_reactions} (\textit{bool}) --- run the ROPA on the
-  surface reaction set (\pkg{True}) or the gas reaction set (\pkg{False}) of
-  the coupled mechanism.
-\item (all other parameters as in \pkg{RateOfProductionAnalysis}.)
-\end{params}
-\returns same \pkg{dict} shape as \pkg{RateOfProductionAnalysis}, with
-indices/names resolved against the selected phase's kinetic map.
+\begin{lstlisting}[language=Python]
+gas_ropa = pp.RateOfProductionAnalysis("CH4", ropa_type="global",
+                                        heterogeneous_reactions=False)
+surf_ropa = pp.RateOfProductionAnalysis("C(B)", ropa_type="global",
+                                         heterogeneous_reactions=True)
+\end{lstlisting}
 
 \pymethod{RateOfProductionAnalysis2D(species, ropa\_type, number\_of\_reactions=10, \\region\_location=None, mass\_ropa=False) -> dict}
 
@@ -609,7 +611,7 @@ for r, name in zip(rates, names):
 \caption{Three reaction-rate profiles vs.\ temperature, from \texttt{GetReactionRates} plotted with plain matplotlib (no dedicated plotting helper is needed for a simple profile line plot).}
 \end{figure}
 
-\pymethod{GetFormationRates(formation\_rate\_type, species, units="mole") -> list}
+\pymethod{GetFormationRates(formation\_rate\_type, species, units="mole", \\ heterogeneous\_reactions=False) -> list}
 
 Formation-rate profile of a single species (all reactions combined).
 
@@ -617,8 +619,10 @@ Formation-rate profile of a single species (all reactions combined).
 \item \pkg{formation\_rate\_type} (\textit{str}) --- formation-rate type as
   understood by the underlying \pkg{ROPA} widget.
 \item \pkg{species} (\textit{str}) --- species name.
-\item \pkg{units} (\textit{str}) --- \pkg{"mole"} (default) or a supported
-  mass-basis alternative.
+\item \pkg{units} (\textit{str}) --- \pkg{"mole"} (default) or \pkg{"mass"}.
+\item \pkg{heterogeneous\_reactions} (\textit{bool}) --- formation rate from
+  the surface reaction set instead of the gas one, for a coupled
+  gas+surface mechanism.
 \end{params}
 \returns \textit{list[float]}, the formation-rate profile.
 
@@ -649,7 +653,7 @@ Formation-rate profile of a single species (all reactions combined).
 \caption{Global sensitivity of NO, plotted with \texttt{plot\_bars}.}
 \end{figure}
 
-\pymethod{SensitivityAnalysis\_Surface(target, sensitivity\_type="global", ordering\_type="peak-values", normalization\_type="max-value", local\_value=0, lower\_value=0, upper\_value=0, number\_of\_reactions=10, heterogeneous\_sensitivity=False) -> dict}
+\pymethod{SensitivityAnalysis\_Surface(target, sensitivity\_type="global", \\ ordering\_type="peak-values", normalization\_type="max-value", local\_value=0, \\ lower\_value=0, upper\_value=0, number\_of\_reactions=10, \\ heterogeneous\_sensitivity=False) -> dict}
 
 Same as \pkg{SensitivityAnalysis}, for coupled gas+surface mechanisms.
 
@@ -666,6 +670,7 @@ Same as \pkg{SensitivityAnalysis}, for coupled gas+surface mechanisms.
 \textit{Note: kept for backward compatibility; largely superseded by
 \pkg{SensitivityAnalysis} and not updated for heterogeneous mechanisms ---
 prefer \pkg{SensitivityAnalysis} for new code.}
+% LG I am not sure whether this is actually just old code.
 
 \begin{params}
 \item \pkg{target} (\textit{str}) --- target species.
@@ -754,7 +759,7 @@ class.
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.75\textwidth]{figures/species_class_distribution.png}
-\caption{Carbon distribution across species classes over time, plotted with \texttt{plot\_class\_distribution}.}
+\caption{Carbon distribution across species classes over time, plotted with \texttt{plot\_class\_distribution} for a $CH_4$ pyrolysis case.}
 \end{figure}
 
 \pymethod{ElementMolesBySpecies(element) -> pandas.DataFrame}
@@ -769,7 +774,7 @@ a \pkg{<SpeciesClasses>} block.
 \returns \pkg{DataFrame} indexed by the independent variable, one column per
 species: moles of the element per unit mass of mixture.
 
-\pymethod{FluxAnalysisByClass(element, flux\_analysis\_type, class\_name=None, species\_name=None, flux\_per\_class=True, thickness="relative", thickness\_log\_scale=True, label\_type="relative", depth=2, width=3, threshold=0.02, local\_value=0.01, carbon\_weighted=True, auto\_prune\_diagonal=True) -> dict}
+\pymethod{FluxAnalysisByClass(element, flux\_analysis\_type, class\_name=None, \\ species\_name=None, flux\_per\_class=True, thickness="relative", \\ thickness\_log\_scale=True, label\_type="relative", depth=2, width=3, \\ threshold=0.02, local\_value=0.01, carbon\_weighted=True, auto\_prune\_diagonal=True) -> dict}
 
 Element flux between species \emph{classes} at a point of the independent
 variable. The full directed class$\to$class flux matrix is always computed
@@ -825,7 +830,7 @@ with one row per BIN, columns matching OpenSMOKE's \pkg{BinProperties.txt}
 \pkg{numPP[\#]}, \pkg{Bin\_section}). \pkg{None} if the mechanism has no
 \pkg{<SootProperties>} block.
 
-\pymethod{SootPSD(local\_value=0.0, particle\_type="all", diameter\_type="dmob", min\_section=5, mobility\_exponent=0.45, merge\_tol=0.20) -> pandas.DataFrame}
+\pymethod{SootPSD(local\_value=0.0, particle\_type="all", diameter\_type="dmob", \\ min\_section=5, mobility\_exponent=0.45, merge\_tol=0.20) -> pandas.DataFrame}
 
 Soot particle size distribution at a chosen point of the independent
 variable.
@@ -866,6 +871,59 @@ the mechanism has no \pkg{<SootProperties>} block.
 \caption{Soot PSD at a fixed abscissa, four diameter definitions overlaid with \texttt{plot\_distribution}.}
 \end{figure}
 
+\pymethod{getFvSootProfile(as\_dataframe=False, min\_section=5) -> (numpy.ndarray, numpy.ndarray)}
+
+Soot volume fraction $f_v$ [-] along the independent variable: at every point, $\sum_{\text{BIN}} (1/\rho_{\text{BIN}}) \cdot mass_{\text{BIN}}$ over the BINs with \pkg{Bin\_section} $\geq$ \pkg{min\_section} --- the same
+definition OpenSMOKE itself uses ($V_{\text{soot}}/V_{\text{tot}}$).
+
+\begin{params}
+\item \pkg{as\_dataframe} (\textit{bool}) --- return a \pkg{DataFrame} with
+  an \pkg{"fv[-]"} column (plus \pkg{"soot\_mass[kg/m3]"}) instead of the
+  \pkg{(x, y)} tuple.
+\item \pkg{min\_section} (\textit{int}) --- minimum BIN section included,
+  same meaning as in \pkg{SootPSD}.
+\end{params}
+\returns \pkg{(x, fv)} as \pkg{numpy.ndarray} pairs, or a \pkg{DataFrame}.
+\pkg{fv} is \pkg{0} (not \pkg{NaN}) at points with no soot mass. Raises
+\pkg{ValueError} if the mechanism has no \pkg{<SootProperties>} block.
+
+\pymethod{getSSASootProfile(as\_dataframe=False, min\_section=5) -> (numpy.ndarray, numpy.ndarray)}
+
+Mean soot specific surface area [m$^2$/kg] along the independent variable:
+mass-weighted over the BINs with \pkg{Bin\_section} $\geq$
+\pkg{min\_section} (total soot surface / total soot mass), each BIN's own
+SSA being $\pi D_{pp}^2 \cdot numPP / mass_{\text{BIN}}$ (\pkg{numPP}
+$\leq 0$ counted as 1).
+
+\begin{params}
+\item \pkg{as\_dataframe} (\textit{bool}) --- adds a
+  \pkg{"soot\_mass[kg/m3]"} column when \pkg{True}.
+\item \pkg{min\_section} (\textit{int}).
+\end{params}
+\returns \pkg{(x, ssa)} pair, or a \pkg{DataFrame}. \pkg{NaN} where there is
+no soot.
+
+\pymethod{getHtoCSootProfile(as\_dataframe=False, min\_section=5, weighting="mass") -> (numpy.ndarray, numpy.ndarray)}
+
+Mean soot H/C [-] along the independent variable, over the BINs with
+\pkg{Bin\_section} $\geq$ \pkg{min\_section}.
+
+\begin{params}
+\item \pkg{as\_dataframe} (\textit{bool}).
+\item \pkg{min\_section} (\textit{int}).
+\item \pkg{weighting} (\textit{str}) --- \pkg{"mass"}: mass-weighted mean
+  of each BIN's own H/C; \pkg{"carbon"}: total H atoms / total C atoms
+  across the BINs (the two differ whenever H/C varies across BIN sizes).
+\end{params}
+\returns \pkg{(x, htoc)} pair, or a \pkg{DataFrame}. \pkg{NaN} where there is
+no soot.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.75\textwidth]{figures/soot_fv.png}
+\caption{Soot volume fraction along the abscissa, \texttt{getFvSootProfile} (\texttt{SootFv.py}, Appendix~\ref{app:examples}).}
+\end{figure}
+
 \chapter{Reaction-Class Post-Processing}
 \label{ch:reaction-classes}
 
@@ -875,72 +933,14 @@ mechanism's \pkg{kinetics.xml} (or \pkg{kinetics.surface.xml}) contains a
 defines how the mechanism's raw subclasses roll up into user-facing groups
 (see e.g.\ \pkg{examples/data/Surface\_Data/surf\_rxn\_class.txt}).
 
-\pyfunc{assignclass(pp, classes\_definition, heterogeneous\_reactions=False)}
-
-Reads the per-reaction class/subclass labels from the mechanism (once, in
-C++, reusing an existing \pkg{PostProcessor}) and assigns each reaction to a
-user-defined group from the class-groups file.
-
-\begin{params}
-\item \pkg{pp} (\textit{PostProcessor}) --- a \pkg{PostProcessor} already
-  built for the mechanism/output pair to classify.
-\item \pkg{classes\_definition} (\textit{str}) --- path to the class-groups
-  text file.
-\item \pkg{heterogeneous\_reactions} (\textit{bool}) --- classify the
-  surface mechanism instead of the gas one.
-\end{params}
-\returns tuple \pkg{(rxns\_sorted, reactions\_all)}: \pkg{rxns\_sorted} is an
-internal sorted/grouped representation consumed by \pkg{FluxByClass} and
-\pkg{script\_utils}; \pkg{reactions\_all} is a \textit{list[dict]}, one entry
-per reaction (\pkg{index}, \pkg{name}, \pkg{class}, \pkg{reactiontype}).
-Raises a plain exception if the mechanism has no \pkg{<ReactionClasses>}
-block.
-
-\pyclass{FluxByClass}
-
-\pymethod{FluxByClass(rxns\_sorted, reactions\_all=[], verbose=False)}
-
-\begin{params}
-\item \pkg{rxns\_sorted} --- result of \pkg{assignclass} (or
-  \pkg{script\_utils.get\_sortedrxns}).
-\item \pkg{reactions\_all} (\textit{list[dict]}) --- as returned by
-  \pkg{assignclass}, optional.
-\item \pkg{verbose} (\textit{bool}).
-\end{params}
-
-\pymethod{process\_flux(species\_list, tot\_rop\_dct)}
-
-Aggregates a set of per-species ROPA results onto the reaction-class table,
-merging duplicate/reversible reaction pairs in one C++ pass across all
-requested species.
-
-\begin{params}
-\item \pkg{species\_list} (\textit{list}) --- either species names
-  (\textit{str}) or \pkg{\{combined\_name: [species, ...]\}} dicts to lump
-  several species under one combined flux column.
-\item \pkg{tot\_rop\_dct} (\textit{dict}) --- \pkg{\{species: ropa\_result\}},
-  one ROPA \pkg{dict} (as returned by
-  \pkg{PostProcessor.RateOfProductionAnalysis[\_Surface]}) per species.
-\end{params}
-\returns \pkg{None}; results are stored on \pkg{self} for
-\pkg{sort\_and\_filter}.
-
-\pymethod{sort\_and\_filter(sortlist, filter\_dct=\{\}, thresh=1e-3, weigh="false", dropunsorted=True) -> pandas.DataFrame}
-
-\begin{params}
-\item \pkg{sortlist} (\textit{list[str]}) --- grouping criteria, e.g.\
-  \pkg{["reactiontype"]} or \pkg{["classtype"]}.
-\item \pkg{filter\_dct} (\textit{dict}) --- optional filter on class
-  columns.
-\item \pkg{thresh} (\textit{float}) --- drop groups below this
-  fractional-flux threshold.
-\item \pkg{weigh} (\textit{str}) --- weighting mode: \pkg{"normbyspecies"},
-  \pkg{"omegaij"} or \pkg{"false"}.
-\item \pkg{dropunsorted} (\textit{bool}) --- drop the \pkg{UNSORTED}
-  bucket.
-\end{params}
-\returns \pkg{DataFrame} of grouped/filtered fluxes, ready for
-\pkg{plot\_heatmap} (Chapter~\ref{ch:plotting}).
+This module's \pkg{assignclass} function and \pkg{FluxByClass} class are the
+internal machinery that reads a mechanism's \pkg{<ReactionClasses>} block and aggregates ROPA results onto it; every example and notebook in this
+guide reaches them only through \pkg{script\_utils.get\_sortedrxns} and
+\pkg{script\_utils.process\_classes} (Chapter~\ref{ch:orchestration}), which
+is the recommended entry point --- see their source (or docstrings) if you
+need to build a custom computation on top of the same machinery. The two functions below, by contrast, \emph{are} meant to be called directly once
+you already have the per-simulation flux tables \pkg{process\_classes}
+returns.
 
 \pyfunc{merge\_maps\_byspecies(sorted\_dfs\_dct, tosum=False) -> pandas.DataFrame}
 
@@ -960,8 +960,7 @@ Combines the per-simulation heatmap \pkg{DataFrame}s produced by
 \pyfunc{FDI(sorted\_dfs\_dct, fditype="global", speciesi="", classj="") -> pandas.DataFrame}
 
 Computes pairwise Flux Diagnostic Indices (FDI) between a set of
-simulations' class-flux maps, following
-\href{https://doi.org/10.1016/j.combustflame.2022.112073}{Pratali Maffei et al., Combustion and Flame 2022}.
+simulations' class-flux maps. %, following \href{https://doi.org/10.1016/j.combustflame.2022.112073}{Pratali Maffei et al., Combustion and Flame 2022}. % Link a un articolo di Andrea, ma non penso venga di qui in ogni caso.
 
 \begin{params}
 \item \pkg{sorted\_dfs\_dct} (\textit{dict}) --- \pkg{\{simulation\_name:
@@ -982,15 +981,14 @@ triangle populated with FDI values (mean-centered), suitable for a heatmap.
 \label{ch:orchestration}
 
 Module \pkg{pySMOKEPostProcessor.script\_utils}. These functions wire
-together a \pkg{PostProcessor} and the reaction-class machinery of
+together a \pkg{PostProcessor} and the reaction-class computations of
 Chapter~\ref{ch:reaction-classes} for common multi-species / multi-simulation
-workflows, and are the recommended entry point for reaction-class analysis
-rather than calling \pkg{assignclass}/\pkg{FluxByClass} directly.
+workflows, and are the recommended entry point for reaction-class analysis.
 
 \pyfunc{get\_sortedrxns(pp, class\_groups\_file, heterogeneous\_reactions=False)}
 
-Thin wrapper around \pkg{assignclass} (Chapter~\ref{ch:reaction-classes}),
-returning only the sorted/grouped object.
+Classifies the mechanism's reactions from its \pkg{<ReactionClasses>} block
+against the class-groups file, returning only the sorted/grouped object.
 
 \begin{params}
 \item \pkg{pp} (\textit{PostProcessor}).
@@ -1000,7 +998,7 @@ returning only the sorted/grouped object.
 \returns the \pkg{rxns\_sorted} object (input to \pkg{process\_classes} and
 \pkg{reactionrates\_byclasses} below).
 
-\pyfunc{process\_classes(simul\_fld, kin\_xml\_fld, rxns\_sorted\_obj, species\_list, sortlists, ropa\_type, n\_of\_rxns=100, filter\_dcts=None, threshs=None, weigh="normbyspecies", local\_value=0.0, upper\_value=0.0, lower\_value=0.0, mass\_ropa=False, heterogeneous\_reactions=False, pp=None) -> list[pandas.DataFrame]}
+\pyfunc{process\_classes(simul\_fld, kin\_xml\_fld, rxns\_sorted\_obj, species\_list, \\ sortlists, ropa\_type, n\_of\_rxns=100, filter\_dcts=None, threshs=None, \\ weigh="normbyspecies", local\_value=0.0, upper\_value=0.0, lower\_value=0.0, mass\_ropa=False, heterogeneous\_reactions=False, pp=None) -> list[pandas.DataFrame]}
 
 Runs a ROPA for every species in \pkg{species\_list} and groups the combined
 flux by reaction class, once per entry of \pkg{sortlists}.
@@ -1010,7 +1008,9 @@ flux by reaction class, once per entry of \pkg{sortlists}.
   folders, used only to build a \pkg{PostProcessor} if \pkg{pp} is not
   given.
 \item \pkg{rxns\_sorted\_obj} --- result of \pkg{get\_sortedrxns}.
-\item \pkg{species\_list} (\textit{list}) --- as in \pkg{FluxByClass.process\_flux}.
+\item \pkg{species\_list} (\textit{list}) --- either species names
+  (\textit{str}) or \pkg{\{combined\_name: [species, ...]\}} dicts to lump
+  several species under one combined flux column.
 \item \pkg{sortlists} (\textit{list[list[str]]}) --- one grouping-criteria
   list per output \pkg{DataFrame} requested.
 \item \pkg{ropa\_type} (\textit{str}) --- \pkg{"global"}, \pkg{"local"} or
@@ -1037,12 +1037,14 @@ flux by reaction class, once per entry of \pkg{sortlists}.
 \centering
 \includegraphics[width=0.6\textwidth]{figures/ropa_by_class_heatmap.png}
 \caption{Global ROPA on C(B) grouped by reaction class, for a coupled gas+surface mechanism (\texttt{process\_classes} + \texttt{plot\_heatmap}).}
+\label{fig:ropa-by-class-heatmap}
 \end{figure}
 
 \pyfunc{cumulative\_rates(simul\_fld, kin\_xml\_fld, species\_list, rate\_type, x\_axis, n\_of\_rxns=100, mass\_ropa=False, threshold=0.01, heterogeneous\_reactions=False, pp=None) -> dict}
 
 Per-species cumulative (time/coordinate-resolved) reaction-rate tables,
-built from a global ROPA plus \pkg{PostProcessor.cumulativerates}.
+built from a global ROPA per species, expanded into full rate profiles and
+filtered by cumulative contribution.
 
 \begin{params}
 \item \pkg{species\_list} (\textit{list[str]}).
@@ -1088,38 +1090,13 @@ group.
 the independent variable, columns = class groups, ready for
 \pkg{plot\_areas}.
 
-\pymethod{PostProcessor.reactionrategroups(rxnnames\_sr, xaxis, threshold=0.01, heterogeneous\_reactions=False) -> pandas.DataFrame}
-
-Lower-level method underlying \pkg{reactionrates\_byclasses}: sums the rate
-profiles of named-reaction groups and drops groups below a cumulative
-contribution threshold.
-
-\begin{params}
-\item \pkg{rxnnames\_sr} (\textit{pandas.Series}) --- index = group label,
-  values = list of reaction names in that group.
-\item \pkg{xaxis} (\textit{list}) --- abscissa used for the threshold
-  integral.
-\item \pkg{threshold} (\textit{float}).
-\item \pkg{heterogeneous\_reactions} (\textit{bool}).
-\end{params}
-\returns \pkg{DataFrame}, columns = surviving group labels.
-
-\pymethod{PostProcessor.cumulativerates(xaxis, ropa\_dct, rate\_type="PC", threshold=0.01, heterogeneous\_reactions=False) -> pandas.DataFrame}
-
-Lower-level method underlying \pkg{cumulative\_rates}: expands a ROPA result
-into full rate profiles per reaction, merges forward/backward and duplicate
-reactions, and filters by cumulative contribution.
-
-\begin{params}
-\item \pkg{xaxis} (\textit{list}).
-\item \pkg{ropa\_dct} (\textit{dict}) --- a ROPA result, as returned by
-  \pkg{RateOfProductionAnalysis[\_Surface]}.
-\item \pkg{rate\_type} (\textit{str}) --- \pkg{"PC"}/\pkg{"P"}/\pkg{"C"}.
-\item \pkg{threshold} (\textit{float}).
-\item \pkg{heterogeneous\_reactions} (\textit{bool}).
-\end{params}
-\returns \pkg{DataFrame}, columns = individual reactions labelled with their
-\% cumulative contribution.
+\pkg{cumulative\_rates} and \pkg{reactionrates\_byclasses} are themselves
+thin wrappers around \pkg{PostProcessor.cumulativerates} and
+\pkg{PostProcessor.reactionrategroups} respectively --- lower-level methods
+that operate on an already-computed ROPA result / reaction-name grouping
+rather than a class-groups file; reach for them directly only if you are
+building a custom grouping outside the reaction-class machinery above (see
+their docstrings on \pkg{PostProcessor} for the full signature).
 
 \chapter{Plotting utilities}
 \label{ch:plotting}
@@ -1144,24 +1121,6 @@ reaction name and coefficient value.
   from the number of bars if omitted.
 \end{params}
 
-\pyfunc{plot\_multiple\_bars(ax, data, colors=None, total\_width=0.8, single\_width=1, y\_names=None, legend=True) -> Axes}
-
-Grouped horizontal bar chart for several parallel series sharing the same
-categories.
-
-\begin{params}
-\item \pkg{ax} (\textit{Axes}) --- target axes.
-\item \pkg{data} (\textit{dict}) --- \pkg{\{series\_name: list of values\}},
-  all lists the same length.
-\item \pkg{colors} (\textit{list}, optional).
-\item \pkg{total\_width} (\textit{float}) --- fraction of the category width
-  covered by bars.
-\item \pkg{single\_width} (\textit{float}) --- relative width of one bar
-  within its group.
-\item \pkg{y\_names} (\textit{list[str]}, optional) --- category labels.
-\item \pkg{legend} (\textit{bool}).
-\end{params}
-
 \pyfunc{plot\_bars\_multiSimulation(data\_list, ax\_list=None, cols=None, rows=None) -> (Figure, list[Axes])}
 
 Draws \pkg{plot\_bars} into a grid of subplots, one per entry of
@@ -1179,7 +1138,7 @@ shape).
 \pyfunc{plot\_heatmap(sort\_df, symmetricaxis=False, dftype="generic", compressratio=1) -> Figure}
 
 Heatmap of a grouped-flux \pkg{DataFrame} (as returned by
-\pkg{sort\_and\_filter}/\pkg{process\_classes}), with a diverging (red/blue,
+\pkg{script\_utils.process\_classes}), with a diverging (red/blue,
 zero-centered) colormap.
 
 \begin{params}
@@ -1192,19 +1151,6 @@ zero-centered) colormap.
   or \pkg{"flux"} (strip a leading \pkg{"flux\_"} from row labels).
 \item \pkg{compressratio} (\textit{float}) --- compress the plot's aspect
   ratio (useful for very tall/wide tables).
-\end{params}
-
-\pyfunc{save\_fig(fig, plt\_fld, sortlist, simul\_name)}
-
-Saves a figure as \pkg{\{simul\_name\}\_\{criteria\}.png} at 200 dpi,
-overwriting any existing file with the same name.
-
-\begin{params}
-\item \pkg{fig} (\textit{Figure}).
-\item \pkg{plt\_fld} (\textit{str}) --- destination folder.
-\item \pkg{sortlist} (\textit{list[str]}) --- joined with \pkg{"-"} to build
-  the filename suffix.
-\item \pkg{simul\_name} (\textit{str}).
 \end{params}
 
 \pyfunc{plot\_class\_distribution(data\_df, xlabel="coordinate", ylabel="element fraction", title="", colors=None, fontsize=8, loc="upper right", edgecolor="k", linewidth=0.4, alpha=1.0, reverse\_legend=True) -> (Figure, Axes)}
@@ -1249,6 +1195,12 @@ a \pkg{SootPSD} \pkg{DataFrame}.
 \item \pkg{**plot\_kw} --- forwarded to \pkg{Axes.plot} (e.g.\
   \pkg{marker}, \pkg{linestyle}).
 \end{params}
+
+The module also has \pkg{plot\_multiple\_bars} (a grouped-bar-chart variant
+of \pkg{plot\_bars} for several parallel series) and \pkg{save\_fig} (batch-save
+a figure under a class-list-derived filename); neither is exercised by any
+bundled example, so see their docstrings in \pkg{plotting\_utilities/} if you
+need them.
 
 \chapter{Element speciation utility}
 
@@ -1311,7 +1263,7 @@ by reaction class.
 
 \pyclass{CumulativeDeposition}
 
-\pymethod{CumulativeDeposition(kineticFolder, outputFolder, class\_group\_file, allCarbon=False, sort\_type=[['reactiontype']], carbon\_density=2000.0, area=None)}
+\pymethod{CumulativeDeposition(kineticFolder, outputFolder, class\_group\_file, \\ allCarbon=False, sort\_type=[['reactiontype']], carbon\_density=2000.0, area=None)}
 
 \begin{params}
 \item \pkg{kineticFolder} (\textit{str}) --- folder containing
@@ -1329,7 +1281,7 @@ by reaction class.
   for extensive (\pkg{"mass"}/\pkg{"moles"}) output units.
 \end{params}
 
-\pymethod{plotCumulativeDeposition(profilesTag="profiles", lump\_steps=1, units="mass-specific", threshold=0.01, fig=None, ax=None, colors=seaborn "muted") -> (Figure, Axes)}
+\pymethod{plotCumulativeDeposition(profilesTag="profiles", lump\_steps=1,\\  units="mass-specific", threshold=0.01, fig=None, ax=None, colors=seaborn "muted") -> (Figure, Axes)}
 
 \begin{params}
 \item \pkg{profilesTag} (\textit{str}) --- tag to look for in
@@ -1393,27 +1345,9 @@ ax[1].invert_yaxis()  # mirror the soot panel below the deposition panel
 \caption{Cumulative deposited carbon mass (top, by surface reaction class) mirrored against cumulative gas-phase soot mass production (bottom, inverted axis, by gas reaction class), sharing a time axis.}
 \end{figure}
 
-\pyfunc{getTimeProfile(outputFolder="Output", tag="profiles") -> numpy.ndarray}
-
-Reads the integration-step time grid directly out of \pkg{Output.xml}.
-
-\begin{params}
-\item \pkg{outputFolder} (\textit{str}).
-\item \pkg{tag} (\textit{str}) --- XML tag holding the profiles block.
-\end{params}
-\returns \pkg{numpy.ndarray} of timesteps.
-
-\pyfunc{getROPAIntegralTimeHistory(df\_ROPAt) -> pandas.DataFrame}
-
-Cumulatively time-integrates (trapezoidal rule) a table of local ROPA
-values collected once per timestep.
-
-\begin{params}
-\item \pkg{df\_ROPAt} (\textit{DataFrame}) --- must contain a \pkg{"time"}
-  column plus one numeric column per series.
-\end{params}
-\returns \pkg{DataFrame}, same shape, numeric columns replaced by their
-cumulative integral over time.
+Internally, both classes read the timestep grid and time-integrate their
+per-timestep ROPA table via the module's \pkg{getTimeProfile}/
+\pkg{getROPAIntegralTimeHistory} helpers; not normally called directly.
 
 \chapter{\texttt{GraphWriter} (internal helper)}
 
@@ -1525,19 +1459,19 @@ fdi = rc.FDI(sorted_dfs, fditype="global")
 
 Constructing a \pkg{PostProcessor} on a coupled mechanism auto-detects the
 surface phase (from \pkg{kinetics.surface.xml}) and sets
-\pkg{pp.isHeterogeneous}; every \pkg{*\_Surface} method additionally takes
-its own \pkg{heterogeneous\_reactions}/\pkg{heterogeneous\_sensitivity} flag
-to pick which side of the coupled mechanism (gas or surface) the call
-applies to:
+\pkg{pp.isHeterogeneous}; ROPA and Sensitivity calls additionally take their
+own \pkg{heterogeneous\_reactions}/\pkg{heterogeneous\_sensitivity} flag to
+pick which side of the coupled mechanism (gas or surface) the call applies
+to:
 
 \begin{lstlisting}[language=Python]
 pp = PostProcessor(kineticFolder, outputFolder)   # kinetics.surface.xml auto-detected
 assert pp.isHeterogeneous
 
-gas_ropa = pp.RateOfProductionAnalysis_Surface("CH4", ropa_type="global",
-                                                heterogeneous_reactions=False)
-surf_ropa = pp.RateOfProductionAnalysis_Surface("C(B)", ropa_type="global",
-                                                 heterogeneous_reactions=True)
+gas_ropa = pp.RateOfProductionAnalysis("CH4", ropa_type="global",
+                                        heterogeneous_reactions=False)
+surf_ropa = pp.RateOfProductionAnalysis("C(B)", ropa_type="global",
+                                         heterogeneous_reactions=True)
 \end{lstlisting}
 
 \section{Notebook display of graphviz results}
@@ -1601,12 +1535,14 @@ pySMOKEdev/
 \begin{enumerate}
 \item \textbf{C++ extension} --- \pkg{cxx\_wrapper/PostProcessorWrapper\_py.cpp}
   defines the pybind11 module \pkg{pySMOKEPostProcessor.pySMOKEPostProcessor},
-  exposing (among others) \pkg{PostProcessorCore}, \pkg{ROPA},
-  \pkg{ROPA\_Surface} (inherits \pkg{ROPA}), \pkg{Sensitivity},
-  \pkg{SpeciesClass}, \pkg{ReactionClass}, \pkg{Soot}, and the \pkg{Phase} /
-  \pkg{Phase2Kind} enums. All bound methods release the GIL during the C++
-  call. These are thin bindings over the OpenSMOKE++ core algorithms ---
-  essentially no business logic lives in the \pkg{.cpp} file itself.
+  exposing (among others) \pkg{PostProcessorCore}, \pkg{ROPA} (gas and
+  surface/liquid ROPA folded into one class, selected by a
+  \pkg{heterogeneous\_reactions} bool argument rather than a subclass),
+  \pkg{Sensitivity}, \pkg{SpeciesClass}, \pkg{ReactionClass}, \pkg{Soot}, and
+  the \pkg{Phase} / \pkg{Phase2Kind} enums. All bound methods release the
+  GIL during the C++ call. These are thin bindings over the OpenSMOKE++ core
+  algorithms --- essentially no business logic lives in the \pkg{.cpp} file
+  itself.
 \item \textbf{Python layer} --- \pkg{pySMOKEPostProcessor/}, re-exported from
   \pkg{\_\_init\_\_.py}. Owns all orchestration, pandas/matplotlib
   formatting, and the friendlier public API (\pkg{PostProcessor} and
@@ -1654,9 +1590,12 @@ Source subfolders under \pkg{cxx\_wrapper/source/}:
   is handed), \pkg{KineticMapReaderBase} + per-phase readers
   (\pkg{\_Gas}/\pkg{\_Liquid}/\pkg{\_Solid}/\pkg{\_Surface}), \pkg{OutputReader},
   \pkg{Utilities}.
-\item[\texttt{ropa/}] \pkg{ROPA}, \pkg{ROPA\_Surface}, and
-  \pkg{PostProcessorFluxMap} (the element-flux-analysis engine).
-\item[\texttt{sensitivity/}] \pkg{SensitivityReader},
+\item[\texttt{ropa/}] \pkg{ROPA} (its surface/liquid method bodies live in
+  \pkg{ROPA\_Surface.hpp}/\pkg{ROPA\_Liquid.hpp}, included from \pkg{ROPA.h}
+  but with no class of their own --- just impl files kept separate so
+  \pkg{ROPA.hpp} stays a readable size), and \pkg{PostProcessorFluxMap} (the
+  element-flux-analysis engine).
+\item[\texttt{sensitivity/}] \pkg{SensitivityCalculator},
   \pkg{SensitivityDataReader}.
 \item[\texttt{classes/}] \pkg{ReactionClasses}, \pkg{SpeciesClasses},
   \pkg{Soot}.
@@ -1826,18 +1765,23 @@ still be handled incorrectly either way. Worth revisiting if that scenario
 ever matters in practice: thread the reaction index through
 \pkg{sortby0}/\pkg{reactionrategroups} instead of the printed name.
 
-\section{\texttt{ROPA\_Surface} / \texttt{Sensitivity\_Surface}: plain, not virtual, inheritance}
+\section{(Historical) \texttt{ROPA\_Surface}/\texttt{Sensitivities\_Surface}: a \texttt{virtual}-inheritance pybind11 trap}
 
-\pkg{ROPA\_Surface}, and historically \pkg{Sensitivities\_Surface} and
-\pkg{Sensitivities\_Database\_Surface}, inherit from their respective bases
-with \emph{plain} (\pkg{public}) inheritance, deliberately \emph{not}
-\pkg{virtual}. \pkg{virtual} inheritance was tried and removed: with a
-single, non-diamond base it bought nothing, but it broke pybind11's
-fixed-offset downcast to the registered base class --- any call from Python
-into an inherited-but-not-overridden method silently corrupted memory
-(verified with \pkg{gdb} at the time). If a future refactor reintroduces
-multiple inheritance here, re-verify pybind11's downcast behaviour under
-\pkg{virtual} bases before assuming it is a safe, purely-stylistic change.
+\pkg{ROPA\_Surface}, \pkg{Sensitivities\_Surface} and
+\pkg{Sensitivities\_Database\_Surface} no longer exist as separate classes
+--- gas/surface ROPA is now one \pkg{ROPA} class selected by a
+\pkg{heterogeneous\_reactions} bool, and gas/surface sensitivity is one
+\pkg{SensitivityCalculator} class selected by \pkg{Prepare(Phase)}. Kept
+here because the bug that motivated the pre-merge classes' \emph{plain}
+(\pkg{public}), deliberately \emph{not} \pkg{virtual}, inheritance is a
+general pybind11 trap worth remembering if inheritance is reintroduced
+anywhere in the bound C++ classes: \pkg{virtual} inheritance was tried on
+those old subclasses and removed --- with a single, non-diamond base it
+bought nothing, but it broke pybind11's fixed-offset downcast to the
+registered base class, and any call from Python into an
+inherited-but-not-overridden method silently corrupted memory (verified
+with \pkg{gdb} at the time). Re-verify pybind11's downcast behaviour under
+\pkg{virtual} bases before assuming it is a safe, purely-stylistic choice.
 
 \section{\texttt{SpeciesClasses} is newer and less battle-tested}
 
@@ -1910,12 +1854,12 @@ rather than adding another copy to \pkg{PostProcessorCore}.
 \pkg{MergePositiveAndNegativeBars} as free functions --- the shared
 "rank pos/neg bar-chart entries into one magnitude-sorted, sign-encoded
 list" primitive used by ROPA/sensitivity result formatting. \pkg{MergeBars}
-is correctly shared \\(\pkg{SensitivityDataReader.hpp}/\pkg{SensitivityReader.hpp}
+is correctly shared \\(\pkg{SensitivityDataReader.hpp}/\pkg{SensitivityCalculator.hpp}
 call the free function directly). \\\pkg{MergePositiveAndNegativeBars} used to
 also exist as a byte-identical private member on \pkg{ROPA} --- copy-pasted,
 not shared --- with the free function in \pkg{Utilities.h} entirely unused.
-\pkg{ROPA} (and, through inheritance, \pkg{ROPA\_Surface}/\pkg{ROPA\_Liquid})
-now \pkg{\#include "core/Utilities.h"} and call the one free function
+\pkg{ROPA} (including its \pkg{ROPA\_Surface.hpp}/\pkg{ROPA\_Liquid.hpp} impl
+files) now \pkg{\#include "core/Utilities.h"} and call the one free function
 directly; the private member was deleted. If you find a "helper" that looks
 like it duplicates something in \pkg{Utilities.h}, grep for the other
 definition before assuming it is intentional --- it may just be an
@@ -1951,7 +1895,7 @@ their own folder (\pkg{cd examples/python} or
 \section{\texttt{examples/python/}}
 
 \subsection{\texttt{RateOfProductionAnalysis\_1.py}}
-Global, local and region ROPA on H2 in one script (Chapter 4, ROPA).
+Global, local and region ROPA on H2 in one script (Chapter 5, ROPA).
 \begin{lstlisting}[language=Python]
 # Only for dev purposes
 import os
@@ -1993,7 +1937,7 @@ plt.show()
 \end{lstlisting}
 
 \subsection{\texttt{SensitivityAnalysis\_1.py}}
-Global sensitivity of NO (Chapter 5, Sensitivity Analysis).
+Global sensitivity of NO (Chapter 6, Sensitivity Analysis).
 \begin{lstlisting}[language=Python]
 # Only for dev purposes
 import os
@@ -2020,7 +1964,7 @@ plt.show()
 \end{lstlisting}
 
 \subsection{\texttt{flux.py}}
-Elementary flux analysis graph (Chapter 6, Elementary Flux Analysis).
+Elementary flux analysis graph (Chapter 7, Elementary Flux Analysis).
 \begin{lstlisting}[language=Python]
 import sys
 from pySMOKEPostProcessor import PostProcessor
@@ -2033,22 +1977,22 @@ resultsFolder = os.path.join("..", "data", "ROPA", "Output")
 
 pp = PostProcessor(kineticFolder, resultsFolder)
 
-G = pp.FluxAnalysis(species = "H2",
-                    element = "H",
-                    flux_analysis_type = "destruction",
-                    thickness = "relative",
-                    thickness_log_scale = True,
-                    label_type = "relative",
-                    depth = 1,
-                    width = 3,
-                    threshold = 0.01,
+G = pp.FluxAnalysis(species = "H2", 
+                    element = "H", 
+                    flux_analysis_type = "destruction", 
+                    thickness = "relative", 
+                    thickness_log_scale = True, 
+                    label_type = "relative", 
+                    depth = 1, 
+                    width = 3, 
+                    threshold = 0.01, 
                     local_value = 0.001)
 
 display(G)
 \end{lstlisting}
 
 \subsection{\texttt{SpeciesClasses.py}}
-Species-class elemental distribution and class-to-class flux (Chapter 7,
+Species-class elemental distribution and class-to-class flux (Chapter 8,
 Species-Class Analysis).
 \begin{lstlisting}[language=Python]
 import os
@@ -2118,7 +2062,7 @@ plt.show()
 \end{lstlisting}
 
 \subsection{\texttt{SootPSD.py}}
-Soot particle size distribution, four diameter definitions (Chapter 8,
+Soot particle size distribution, four diameter definitions (Chapter 9,
 Soot Post-Processing).
 \begin{lstlisting}[language=Python]
 import os
@@ -2132,34 +2076,27 @@ resultsFolder = os.path.join("..", "data", "Soot-01", "Output")
 
 pp = PostProcessor(kineticFolder, resultsFolder)
 
-# ---------------------------------------------------------------------------
-# 1) The full <SootProperties> block, one row per BIN. Column names match
-#    OpenSMOKE's BinProperties.txt; Bin_index / Bin_name tie each BIN back to
-#    its gas-phase species.
-# ---------------------------------------------------------------------------
+# 1) BinProperties can be accessed directly as a pandas.DataFrame
 props = pp.dfSootProperties
 print(props.head(6).to_string())
 print(f"... {len(props)} BINs, sections {props['Bin_section'].min()}"
       f"-{props['Bin_section'].max()}\n")
 
 # ---------------------------------------------------------------------------
-# 2) Particle size distribution at a chosen abscissa location. One function,
-#    two knobs:
+# 2) Particle size distribution at a chosen location
 #      particle_type = "all"     -> every BIN with Bin_section >= min_section
-#                      "primary" -> free primary particles (numPP == 1)  [PPSD]
+#                      "primary" -> only primary particles (numPP == 1) [PPSD]
 #      diameter_type = "dmob" -> mobility, dm = Dpp * numPP**mobility_exponent
-#                      "dpp"  -> primary-particle diameter (straight from XML)
-#                      "dcol" -> collision diameter (straight from XML)
-#                      "dva"  -> volume-equivalent sphere diameter (straight from XML)
-#    local_value picks the profile point like local ROPA (first point whose
-#    abscissa >= local_value); the gas state used is in df.attrs.
+#                      "dpp"  -> primary-particle diameter
+#                      "dcol" -> collision diameter
+#                      "dva"  -> volume-equivalent sphere diameter
+#    local_value picks the profile point like local ROPA
 # ---------------------------------------------------------------------------
-local_value = 0.35  # s - near peak soot for this batch-reactor fixture
+local_value = 0.35  # cm - near peak soot
 
-# Same particle population ("all"), four size coordinates. Only "dmob" applies
+# Same particle population ("all"). Only "dmob" applies
 # the aggregation transform Dpp * numPP**exp; "dpp"/"dcol"/"dva" read the BIN
-# property directly, so total N is identical - only the abscissa (and its
-# binning) moves.
+# property directly # TODO check that this is correct @PC
 psd = {}
 for diam in ("dmob", "dpp", "dcol", "dva"):
     psd[diam] = pp.SootPSD(local_value=local_value, particle_type="all",
@@ -2171,25 +2108,20 @@ for diam in ("dmob", "dpp", "dcol", "dva"):
           f"{size_col} {df[size_col].min():.3g}-{df[size_col].max():.4g} nm, "
           f"total N = {df['N[#/m3]'].sum():.3e} #/m3")
 
-print()
-print("mobility PSD (all / dmob):")
-print(psd["dmob"].to_string(), "\n")
-
-# Free primary particles only (numPP == 1) - the classic PPSD, on Dpp.
+# Primary particles only (numPP == 1) - the classic PPSD, on Dpp.
 ppsd = pp.SootPSD(local_value=local_value, particle_type="primary",
                   diameter_type="dpp")
-print(f"PPSD (primary / dpp) @ abscissa = {ppsd.attrs['abscissa']:.4g}")
-print(ppsd.to_string(), "\n")
 
 # ---------------------------------------------------------------------------
-# 3) Plot the four "all" size coordinates on one axes.
+# 3) Comparison between different diameter calculation method
 # ---------------------------------------------------------------------------
 fig, ax = plt.subplots(figsize=(7.2, 5.0))
 for diam, style in zip(("dmob", "dpp", "dcol", "dva"), ("-o", "-s", "-^", "-d")):
-    plot_distribution(psd[diam], ax=ax, label=f"all / {diam}", linestyle=style[0],
+    plot_distribution(psd[diam], ax=ax, label=f"{diam}", linestyle=style[0],
                       marker=style[1])
-ax.set_xlabel("particle diameter [nm]")
-ax.set_title("Soot PSD - mobility vs primary vs collision vs volume-equivalent diameter")
+ax.set_xlabel("Particle diameter [nm]")
+ax.set_title("Soot PSD")
+ax.set_ylabel(r"$dN/d\log_{10}(d_m)$ [m$^{-3}$]")
 ax.legend()
 fig.tight_layout()
 # fig.savefig("SootPSD.png", dpi=200, bbox_inches="tight")
@@ -2197,8 +2129,89 @@ fig.tight_layout()
 plt.show()
 \end{lstlisting}
 
+\subsection{\texttt{SootFv.py}}
+Soot volume fraction along the abscissa (Chapter 9, Soot Post-Processing ---
+\texttt{getFvSootProfile}).
+\begin{lstlisting}[language=Python]
+import os
+
+import matplotlib.pyplot as plt
+
+from pySMOKEPostProcessor import PostProcessor
+
+kineticFolder = os.path.join("..", "data", "Soot-01", "kinetics")
+resultsFolder = os.path.join("..", "data", "Soot-01", "Output")
+
+pp = PostProcessor(kineticFolder, resultsFolder)
+
+# ---------------------------------------------------------------------------
+# Soot volume fraction fv [-] along the abscissa: getFvSootProfile() sums, at
+# every abscissa point, (1/rho_BIN) * mass_BIN.
+# This is the same as OpenSMOKE; the definition is VSoot/VTot
+# ---------------------------------------------------------------------------
+x, fv = pp.getFvSootProfile(min_section=5)
+
+fig, ax = plt.subplots(figsize=(7.2, 5.0))
+ax.plot(x, fv, "-")
+ax.set_xlabel("axial coordinate [cm]")
+ax.set_ylabel(r"$f_v$ [-]")
+ax.set_yscale("log")
+ax.set_title("Soot volume fraction")
+fig.tight_layout()
+plt.show()
+\end{lstlisting}
+
+\subsection{\texttt{SootSSA.py}}
+Mean soot specific surface area and H/C ratio along the abscissa (Chapter 9,
+Soot Post-Processing --- \texttt{getSSASootProfile} / \texttt{getHtoCSootProfile}).
+\begin{lstlisting}[language=Python]
+import os
+
+import matplotlib.pyplot as plt
+
+from pySMOKEPostProcessor import PostProcessor
+
+kineticFolder = os.path.join("..", "data", "Soot-01", "kinetics")
+resultsFolder = os.path.join("..", "data", "Soot-01", "Output")
+
+pp = PostProcessor(kineticFolder, resultsFolder)
+
+# ---------------------------------------------------------------------------
+# Mean SSA along the abscissa. Mass-weighted over the BINs with
+# Bin_section >= min_section: total soot surface / total soot mass.
+# as_dataframe=True adds the soot mass concentration.
+# ---------------------------------------------------------------------------
+x, ssa = pp.getSSASootProfile(min_section=5)
+
+fig, ax1 = plt.subplots(figsize=(7.2, 5.0))
+ax1.plot(x, ssa, "-")
+ax1.set_xlabel("axial coordinate [cm]")
+ax1.set_ylabel(r"$SSA_{avg}$ [$m^2$/$kg$]")
+ax1.set_yscale("log")
+ax1.set_title("Soot Surface Specific Area")
+fig.tight_layout()
+
+# ---------------------------------------------------------------------------
+# Mean H/C along the abscissa over the same BINs: mass-weighted, and
+# carbon-weighted (= total H atoms / total C atoms). Any per-BIN property can
+# be averaged the same way: pp.soot.averagedProfile(prop, 5, "mass")
+# ---------------------------------------------------------------------------
+x, htoc_mass = pp.getHtoCSootProfile(min_section=5, weighting="mass")
+x, htoc_carbon = pp.getHtoCSootProfile(min_section=5, weighting="carbon")
+
+fig, ax2 = plt.subplots(figsize=(7.2, 5.0))
+ax2.plot(x, htoc_mass, "-", label="mass-weighted")
+ax2.plot(x, htoc_carbon, "--", label="carbon-weighted")
+ax2.legend()
+ax2.set_xlabel("axial coordinate [cm]")
+ax2.set_ylabel(r"$H/C_{avg}$ [-]")
+ax2.set_title("Soot H/C ratio")
+fig.tight_layout()
+plt.show()
+\end{lstlisting}
+
 \subsection{\texttt{ReactionRates.py}}
-Full-profile reaction rates vs.\ temperature (Chapter 4, ROPA --
+Full-profile reaction rates vs.\ temperature (Chapter 5, ROPA --
 \texttt{GetReactionRates}).
 \begin{lstlisting}[language=Python]
 # Only for dev purposes
@@ -2289,7 +2302,7 @@ import matplotlib.pyplot as plt
 from pySMOKEPostProcessor.postprocessor import PostProcessor
 from pySMOKEPostProcessor.plotting_utilities.bar_plot import plot_bars_multiSimulation
 
-# TODO the paths are to be fixed Do we have two similar examples which might be compared?
+# TODO the paths are to be fixed Do we have two similar examples which might be compared? 
 # I might load two different mechanisms for the same simulation for this.
 
 kin_root = "/home/lgiardini/Mechanisms"
@@ -2355,6 +2368,11 @@ for j, kin in enumerate(kin_list):
     ax_array[0, j].set_title(kin,fontweight='bold',fontsize=20)
 
 for i, case in enumerate(case_info):
+    # if len(case) == 2:
+    #     label = case[1]
+    # else:
+    #     label = case[0]
+
     label = labels[i]
     ax_array[i, 0].set_ylabel(label,fontweight='bold',fontsize=20)
 
@@ -2370,8 +2388,8 @@ plt.show()
 \section{\texttt{examples/surfacereactions/}}
 
 \subsection{\texttt{ROPA\_species.py}}
-ROPA on a coupled gas+surface mechanism's surface phase (Chapter 4, ROPA --\\
-\texttt{RateOfProductionAnalysis\_Surface}).
+ROPA on a coupled gas+surface mechanism's surface phase (Chapter 5, ROPA --\\
+\texttt{RateOfProductionAnalysis} with \texttt{heterogeneous\_reactions=True}).
 \begin{lstlisting}[language=Python]
 import os
 # Run from examples/python folder
@@ -2388,7 +2406,7 @@ pp = PostProcessor(kineticFolder, resultsFolder)
 sp = 'C(B)'
 phase_ropa = True
 
-ropa = pp.RateOfProductionAnalysis_Surface(
+ropa = pp.RateOfProductionAnalysis(
                     species=sp,
                     ropa_type='global',
                     number_of_reactions=10,
@@ -2409,11 +2427,41 @@ else:
 fig1.set_size_inches(10, 6)
 fig1.tight_layout()
 
+# global_ropa_het = pp.RateOfProductionAnalysis(species='CH4',
+#                                           ropa_type='global',
+#                                           number_of_reactions=10,
+#                                           heterogeneous_reactions=True)
+
+# result_het = {
+#     "coefficients": global_ropa_het["coefficients"],
+#     "reaction_names": global_ropa_het["reaction_names"],
+#     "reaction_indices": global_ropa_het["reaction_indices"]
+# }
+
+# fig_2, ax_2 = plot_bars(result_het)
+# fig_2.suptitle("Heterogeneous ROPA")
+# fig_2.tight_layout()
+
+# local_ropa = pp.RateOfProductionAnalysis(species='H2',
+#                                          ropa_type='local',
+#                                          local_value=0.001,
+#                                          number_of_reactions=10)
+
+# fig_2, ax_2 = plot_bars(local_ropa)
+
+# region_ropa = pp.RateOfProductionAnalysis(species='H2',
+#                                           ropa_type='region',
+#                                           lower_value=0.0005,
+#                                           upper_value=0.0009,
+#                                           number_of_reactions=15)
+
+# fig_3, ax_3 = plot_bars(region_ropa)
+
 plt.show()
 \end{lstlisting}
 
 \subsection{\texttt{SensitivitySurface.py}}
-Sensitivity analysis on the surface phase of a coupled mechanism (Chapter 5,
+Sensitivity analysis on the surface phase of a coupled mechanism (Chapter 6,
 Sensitivity Analysis -- \texttt{SensitivityAnalysis\_Surface}).
 \begin{lstlisting}[language=Python]
 import os
@@ -2429,6 +2477,18 @@ resultsFolder = os.path.join("..","data","Surface_Data","Output")
 pp = PostProcessor(kineticFolder, resultsFolder)
 
 target_species = "CH4"
+
+# global_sensitivity = pp.SensitivityAnalysis_Surface(target=target_species,
+#                                             sensitivity_type='global',
+#                                             number_of_reactions=10,
+#                                             ordering_type='peak-values',
+#                                             normalization_type='local',
+#                                             heterogeneous_sensitivity=False)
+# fig_1, ax_1 = plot_bars(global_sensitivity)
+# fig_1.suptitle(target_species, fontweight="bold")
+# ax_1.set_title("Homogeneous Sensitivity")
+# fig_1.set_size_inches(10, 6)
+# fig_1.tight_layout()
 
 global_sensitivity = pp.SensitivityAnalysis_Surface(target=target_species,
                                             sensitivity_type='global',
@@ -2446,8 +2506,9 @@ plt.show()
 \end{lstlisting}
 
 \subsection{\texttt{ROPAbyClass.py}}
-Global ROPA on a surface species, grouped by reaction class (Chapter 10,
-High-Level Orchestration; produces the heatmap in Figure~10.1).
+Global ROPA on a surface species, grouped by reaction class
+(Chapter~\ref{ch:orchestration}, High-Level Orchestration; produces the
+heatmap in Figure~\ref{fig:ropa-by-class-heatmap}).
 \begin{lstlisting}[language=Python]
 import os
 from pySMOKEPostProcessor.postprocessor import PostProcessor
@@ -2458,12 +2519,20 @@ from pySMOKEPostProcessor import script_utils
 
 kineticFolder = os.path.join("..","data","Surface_Data","kinetics")
 kineticFile = os.path.join(kineticFolder,"kinetics.surface.xml")
+# resultsFolder = os.path.join("..","data","Surface_Data","Output")
 resultsFolder ={'Output' : os.path.join('..', 'data', 'Surface_Data', 'Output')}
 
 class_groups_file = os.path.join('..', 'data', 'Surface_Data', 'surf_rxn_class.txt')
 
+# pp = PostProcessor(kineticFolder, resultsFolder)
+# sort the reactions - same for all examples
+# (get_sortedrxns needs a PostProcessor: classification is read off the same
+# ProfilesDatabase every other analysis on it uses. Classification only depends on
+# the mechanism, so any one of resultsFolder's simulations does - each is still
+# built fresh inside the process_classes loop below for its own ROPA.)
 pp = PostProcessor(kineticFolder, next(iter(resultsFolder.values())))
 rxns_sorted = script_utils.get_sortedrxns(pp, class_groups_file, heterogeneous_reactions=True)
+#   print(rxns_sorted.rxn_class_df)   # This works properly
 species_list =['C(B)']
 sortlists = [['classtype']]
 ropa_type = 'global'
@@ -2481,13 +2550,17 @@ plt.show()
 
 \subsection{\texttt{DepositionROPA.py}}
 Cumulative surface deposition and gas-phase soot production, combined into
-one figure (Chapter 13, Surface-reactions utilities).
+one figure (Chapter 14, Surface-reactions utilities).
 \begin{lstlisting}[language=Python]
 import os
 import matplotlib.pyplot as plt
+# from pySMOKEPostProcessor.plotting_utilities.bar_plot import plot_bars
+# from pySMOKEPostProcessor import plot_heatmap
+# from pySMOKEPostProcessor import script_utils
 from pySMOKEPostProcessor.surfacereactions_utilities.deposition_plot import CumulativeDeposition,CumulativeSootProduction
 
 kineticFolder = os.path.join("..","data","Surface_Data","kinetics")
+# kineticFile = os.path.join(kineticFolder,"kinetics.surface.xml")
 resultsFolder = os.path.join("..","data","Surface_Data","Output")
 
 surface_classes = os.path.join('..', 'data', 'Surface_Data', 'surf_rxn_class.txt')
@@ -2528,11 +2601,11 @@ notebook, cell-split with Markdown commentary and inline-rendered plots
 \midrule
 \endhead
 \pkg{RateOfProductionAnalysis.ipynb} & \pkg{RateOfProductionAnalysis\_1.py} \\
-\pkg{Sensitivity\_Analysis.ipynb}, \pkg{Sensitivity\_Coefficients.ipynb} & \pkg{SensitivityAnalysis\_1.py} \\
+\pkg{Sensitivity Analysis.ipynb}, \pkg{Sensitivity\_Coefficients.ipynb} & \pkg{SensitivityAnalysis\_1.py} \\
 \pkg{FluxAnalysis.ipynb} & \pkg{flux.py} \\
-\pkg{Formation\_Rates.ipynb} & \pkg{GetFormationRates} (Chapter 4) \\
+\pkg{Formation\_Rates.ipynb} & \pkg{GetFormationRates} (Chapter 5) \\
 \pkg{Reaction\_Rates.ipynb} & \pkg{ReactionRates.py} \\
-\pkg{Reaction\_Classes.ipynb} & \pkg{assignclass}/\pkg{get\_sortedrxns} (Chapter~\ref{ch:reaction-classes}) \\
+\pkg{Reaction\_Classes.ipynb} & \pkg{get\_sortedrxns}/\pkg{process\_classes} (Chapter~\ref{ch:orchestration}) \\
 \pkg{Reaction\_Rates\_byclass.ipynb}, \pkg{Reaction\_Rates\_byclass\_Surface.ipynb} & \pkg{ROPAbyClass.py}, reaction-rate-by-class on gas/surface \\
 \pkg{Cumulative-Rates.ipynb} & \pkg{script\_utils.cumulative\_rates} \\
 \pkg{Reaction\_Classes\_FDI.ipynb} & multi-simulation FDI comparison (temperature sweep in \pkg{ReactionClasses/}) \\

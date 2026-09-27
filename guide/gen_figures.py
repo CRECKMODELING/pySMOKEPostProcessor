@@ -140,6 +140,19 @@ fig.tight_layout()
 savefig(fig, "soot_psd.png")
 
 # ---------------------------------------------------------------------------
+# 6b) Soot volume fraction fv along the abscissa
+# ---------------------------------------------------------------------------
+x, fv = pp_soot.getFvSootProfile(min_section=5)
+fig, ax = plt.subplots(figsize=(7.2, 5.0))
+ax.plot(x, fv, "-")
+ax.set_xlabel("axial coordinate [cm]")
+ax.set_ylabel(r"$f_v$ [-]")
+ax.set_yscale("log")
+ax.set_title("Soot volume fraction")
+fig.tight_layout()
+savefig(fig, "soot_fv.png")
+
+# ---------------------------------------------------------------------------
 # 7) Reaction-rate-by-class heatmap (surface deposition example)
 # ---------------------------------------------------------------------------
 kin_surf = os.path.join(DATA, "Surface_Data", "kinetics")
@@ -214,10 +227,12 @@ Soot = CumulativeSootProduction(kineticFolder=kin_surf, outputFolder=out_surf,
 fig, ax = plt.subplots(2, 1, figsize=(10.5, 12.0), sharex=True)
 fig, ax[0] = Bulk.plotCumulativeDeposition(lump_steps=lump_steps, units="mass", fig=fig, ax=ax[0])
 fig, ax[1] = Soot.plotSootProduction(lump_steps=lump_steps, units="mass", fig=fig, ax=ax[1])
-ymax = max(ax[0].get_ylim()[1], ax[1].get_ylim()[1])
-ax[0].set_ylim(top=ymax * 1.1)
+# Deposited carbon mass and soot mass are not on comparable scales for this
+# fixture (area/volume are illustrative constants, not matched to each
+# other), so each panel keeps its own natural y-limits rather than being
+# forced to share one - only the bottom panel is flipped, for the "meets in
+# the middle" mirrored layout.
 ax[1].invert_yaxis()
-ax[1].set_ylim(bottom=ymax * 1.1)
 fig.tight_layout()
 savefig(fig, "deposition_soot.png")
 
