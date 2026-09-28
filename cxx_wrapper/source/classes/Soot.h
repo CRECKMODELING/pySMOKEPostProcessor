@@ -110,10 +110,28 @@ class Soot {
   // Soot Particle Size Distribution at one abscissa location
   // abscissa = additional[0]
   //
-  //   particle_type = "all"     -> all Soot particles (e.g. liq, pp, aggs)
-  //                   "primary" -> pp only (numPP == 1)
-  //   both restricted to BINs with Bin_section >= min_section
-  //   diameter_type = "dmob"    -> mobility, dm = Dpp * numPP^mobility_exponent
+  //   particle_type = "all"     -> every Soot BIN counted as one particle each
+  //                                (aggregates and singles alike)
+  //                   "primary" -> the primary-particle size distribution (PPSD):
+  //                                every BIN (single particles AND aggregates)
+  //                                contributes the primary particles it is made of.
+  //                                Only diameter_type = "dpp" is meaningful for 
+  //                                this population; anything else throws.
+  //   both restricted to BINs with Bin_section >= min_section.
+  //   By default, min_section = 1 for PSD, min_section = 5 for PPSD
+  //   diameter_type = "dmob"    -> mobility diameter, dm = Dpp * numPP^exponent;
+  //                                the exact correlation (prefactor + exponent) is
+  //                                picked by correlation_name (only used for this
+  //                                diameter_type).
+  //                                  "Kelesidis" -> dm = Dpp * numPP^0.45
+  //                                    (Kelesidis et al. 2017, Carbon,
+  //                                    10.1016/j.carbon.2017.06.004)
+  //                                  "Sorensen"  -> dm = Dpp * numPP^0.465
+  //                                    (Sorensen 2011, Aerosol Sci. Technol.,
+  //                                    10.1080/02786826.2011.560909)
+  //                                  "Rissler"   -> dm = 0.794 * Dpp * numPP^0.51
+  //                                    (Rissler et al. 2013, Aerosol Sci. Technol.,
+  //                                    10.1080/02786826.2013.791381)
   //                   "dpp"     -> primary-particle diameter
   //                   "dcol"    -> collision diameter
   //                   "dva"     -> volume-equivalent sphere diameter (Bin_dsph)
@@ -124,13 +142,16 @@ class Soot {
   //   meta:    the scalar gas state actually used - abscissa, T, P, rho, MW
   //
   // Per-bin number density computed from ProfilesDatabase:
-  // N_i = omega_i * rho / Bin_mass_i  [#/m3]
+  // N_i = omega_i * rho / Bin_mass_i  [#/m3] (particle_type == "all"), or that
+  // times Bin_numpp_i (particle_type == "primary", see above).
   // Near-equal diameters are merged into fixed sections
-  // (representative = geometric mean) before dN/dlog10(d) is formed.
+  // (representative = geometric mean) before dN/dlog10(d) is formed. For
+  // particle_type == "primary" the physically meaningful quantity is N_per_m3
+  // itself (a primary-particle count).
   std::pair<std::map<std::string, std::vector<double>>, std::map<std::string, double>>
   ParticleSizeDistribution(double local_value, const std::string& particle_type,
                            const std::string& diameter_type, int min_section,
-                           double mobility_exponent, double merge_tol) const;
+                           const std::string& correlation_name, double merge_tol) const;
 
   // --- soot specific surface area (SSA) --------------------------------------
   // Per BIN: SSA_i = pi * Dpp_i^2 * numPP_i / Bin_mass_i  [m2/kg]
@@ -158,7 +179,7 @@ class Soot {
   std::pair<std::map<std::string, std::vector<double>>, std::map<std::string, double>>
   BuildDistribution(const std::vector<unsigned int>& bins,
                     const std::vector<double>& coord, unsigned int point,
-                    double merge_tol) const;
+                    double merge_tol, const std::vector<double>& weight = {}) const;
 };
 
 #include "Soot.hpp"

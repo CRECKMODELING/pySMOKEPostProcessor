@@ -322,10 +322,11 @@ PYBIND11_MODULE(pySMOKEPostProcessor, m) {
       .def("dcol", &Soot::dcol, py::call_guard<py::gil_scoped_release>())
       .def("dpp", &Soot::dpp, py::call_guard<py::gil_scoped_release>())
       .def("df", &Soot::df, py::call_guard<py::gil_scoped_release>())
-      .def("psd", &Soot::ParticleSizeDistribution, py::arg("local_value") = 0.0,
+      .def("psd", &Soot::ParticleSizeDistribution, py::arg("local_value"),
            py::arg("particle_type") = "all", py::arg("diameter_type") = "dmob",
-           py::arg("min_section") = 5, py::arg("mobility_exponent") = 0.45,
-           py::arg("merge_tol") = 0.20, py::call_guard<py::gil_scoped_release>())
+           py::arg("min_section") = 1,
+           py::arg("correlation_name") = "Kelesidis", py::arg("merge_tol") = 0.20,
+           py::call_guard<py::gil_scoped_release>())
       .def("averagedProfile", &Soot::AveragedProfile, py::arg("property"),
            py::arg("min_section") = 5, py::arg("weighting") = "mass",
            py::call_guard<py::gil_scoped_release>())

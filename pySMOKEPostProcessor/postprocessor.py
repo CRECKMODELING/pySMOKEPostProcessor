@@ -210,7 +210,19 @@ class PostProcessor:
     
     def getFvSootProfile(self, as_dataframe: bool = False, min_section: int = 5):
         """Soot volume fraction [-] along the abscissa.
-        Needs a <SootProperties> block."""
+        Needs a <SootProperties> block.
+
+        Args:
+            as_dataframe: return a DataFrame ("fv[-]", "soot_mass[kg/m3]",
+                indexed by the independent variable) instead of the (x, fv)
+                tuple.
+            min_section: only BINs with Bin_section >= min_section count as soot.
+
+        Returns:
+            (x, fv) tuple of np.ndarray (independent variable, volume fraction),
+            or a DataFrame (columns "fv[-]", "soot_mass[kg/m3]") when
+            as_dataframe=True.
+        """
         with np.errstate(divide="ignore"):
             specific_volume = 1.0 / np.array(self.soot.density())  # m3/kg
         df = self._getAveragedSootProfile(
@@ -231,7 +243,18 @@ class PostProcessor:
         """Mean soot specific surface area [m2/kg] along the abscissa, mass-weighted
         over the BINs with Bin_section >= min_section (total soot surface / total
         soot mass), each BIN having SSA = pi*Dpp**2*numPP/Bin_mass (numPP <= 0
-        counted as 1). NaN where there is no soot. Needs a <SootProperties> block."""
+        counted as 1). NaN where there is no soot. Needs a <SootProperties> block.
+
+        Args:
+            as_dataframe: return a DataFrame ("SSA[m2/kg]", "soot_mass[kg/m3]",
+                indexed by the independent variable) instead of the (x, y) tuple.
+            min_section: only BINs with Bin_section >= min_section count as soot.
+
+        Returns:
+            (x, y) tuple of np.ndarray (independent variable, SSA), or a
+            DataFrame (columns "SSA[m2/kg]", "soot_mass[kg/m3]") when
+            as_dataframe=True.
+        """
         return self._getAveragedSootProfile(
             "SSA[m2/kg]", self.soot.ssa(min_section), as_dataframe, min_section, "mass"
         )
@@ -244,7 +267,20 @@ class PostProcessor:
         """Mean soot H/C [-] along the abscissa over the BINs with
         Bin_section >= min_section. weighting="mass" is the mass-weighted mean of the
         per-BIN H/C; "carbon" gives exactly total H atoms / total C atoms. Needs a
-        <SootProperties> block."""
+        <SootProperties> block.
+
+        Args:
+            as_dataframe: return a DataFrame ("H/C[-]", "soot_mass[kg/m3]",
+                indexed by the independent variable) instead of the (x, y) tuple.
+            min_section: only BINs with Bin_section >= min_section count as soot.
+            weighting: "mass" (mass-weighted mean of per-BIN H/C) or "carbon"
+                (moles of H / moles of C).
+
+        Returns:
+            (x, y) tuple of np.ndarray (independent variable, H/C), or a
+            DataFrame (columns "H/C[-]", "soot_mass[kg/m3]") when
+            as_dataframe=True.
+        """
         return self._getAveragedSootProfile(
             "H/C[-]", self.soot.htoc(), as_dataframe, min_section, weighting
         )
@@ -282,23 +318,52 @@ class PostProcessor:
         local_value: float,
         particle_type: str = "all",
         diameter_type: str = "dmob",
-        min_section: int = 5,
-        mobility_exponent: float = 0.45,
+        min_section: int = 1,
+        correlation_name: str = "Kelesidis",
         merge_tol: float = 0.20,
     ):
         """Soot particle size distribution.
         Pre-requisite: the mechanism has to be compiled with SootProperties enabled.
 
-        particle_type: "all" keeps every BIN with Bin_section >= min_section
-            (BINliq are counted as numPP=1); 
-            "primary" keeps only the primary particles (PPSD).
-        diameter_type: "dmob" mobility diameter dm = Dpp*numPP**mobility_exponent,
-            "dpp" primary-particle diameter, "dcol" collision diameter,
-            "dva" volume-equivalent sphere diameter.
-        local_value: float, coordinate at which the analysis is performed.
+        Args:
+            local_value: coordinate at which the analysis is performed.
+            particle_type: 
+                "all" keeps every BIN with Bin_section >= min_section, each 
+                    counted as one particle (BINliq are counted as numPP=1) 
+                    -> PSD, dN/dlog10(d).
+                "primary" -> the primary-particle size distribution (PPSD):
+                    every BIN (single particles AND aggregates) contributes 
+                    the primary particles it is made of, classified by that 
+                    BIN's OWN dpp
+                    Only diameter_type="dpp" is valid with this.
+            diameter_type: "dmob" mobility diameter dm = f(Dpp, numPP) - see
+                correlation_name, "dpp" primary-particle diameter, "dcol"
+                collision diameter, "dva" volume-equivalent sphere diameter.
+            min_section: only BINs with Bin_section >= min_section are kept.
+                Defaults to 1 here (unlike getSSASootProfile/getHtoCSootProfile/
+                getFvSootProfile's 5): a size distribution is meant to show the
+                full population down to the smallest sections, not just the
+                bulk soot-only ones.
+            correlation_name: only used when diameter_type="dmob" - 
+                Literature correlation used to describe the mobility diameter:
+                "Kelesidis" -> dm = Dpp*numPP**0.45 (Kelesidis et al. 2017,
+                    Carbon, 10.1016/j.carbon.2017.06.004).
+                "Sorensen"  -> dm = Dpp*numPP**0.465 (Sorensen 2011, Aerosol
+                    Sci. Technol., 10.1080/02786826.2011.560909).
+                "Rissler"   -> dm = 0.794*Dpp*numPP**0.51 (Rissler et al. 2013,
+                    Aerosol Sci. Technol., 10.1080/02786826.2013.791381).
+            merge_tol: relative tolerance used to merge near-equal diameters
+                into fixed sections (representative = geometric mean) before
+                dN/dlog10(d) is formed.
 
-        Returns a DataFrame (<d>[nm], N[#/m3], dN/dlog10(<d>[nm])[#/m3], ...); the
-        gas state used is in df.attrs.
+        Returns:
+            A DataFrame (<d>[nm], <d>_min[nm], <d>_max[nm], N[#/m3], n_bins,
+            Dlog10(<d>[nm]), dN/dlog10(<d>[nm])[#/m3]); the gas state actually
+            used (abscissa, T, P, rho, MW) plus particle_type, diameter_type,
+            min_section, correlation_name, local_value are in df.attrs. For
+            particle_type="primary", N[#/m3] is a primary-particle number
+            density and is what should be plotted directly (as
+            ``plot_distribution`` does)
         """
         return compute_psd(
             self,
@@ -306,7 +371,7 @@ class PostProcessor:
             particle_type=particle_type,
             diameter_type=diameter_type,
             min_section=min_section,
-            mobility_exponent=mobility_exponent,
+            correlation_name=correlation_name,
             merge_tol=merge_tol,
         )
 

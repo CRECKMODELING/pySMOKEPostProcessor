@@ -107,7 +107,7 @@ std::vector<double> Soot::SpecificSurfaceArea(const int min_section) const {
 std::pair<std::map<std::string, std::vector<double>>, std::map<std::string, double>>
 Soot::BuildDistribution(const std::vector<unsigned int>& bins,
                         const std::vector<double>& coord, const unsigned int point,
-                        const double merge_tol) const {
+                        const double merge_tol, const std::vector<double>& weight) const {
   const double T = data_->additional[data_->index_T][point];
   const double P = data_->additional[data_->index_P][point];
   const double MWmix = data_->additional[data_->index_MW][point];
@@ -117,14 +117,17 @@ Soot::BuildDistribution(const std::vector<unsigned int>& bins,
 
   // N_i = rho * omega_i / Bin_mass_i [#/m3]. Uses the BIN particle mass rather than
   // MW_i / N_A, so N matches OpenSMOKE's PolimiSoot N(tot); the two differ by ~6e-5
-  // because of the digits carried by the BinProperties.
+  // because of the digits carried by the BinProperties. `weight` (default all-ones)
+  // turns this from an aggregate-count into e.g. a primary-particle count.
   const unsigned int n = static_cast<unsigned int>(bins.size());
   std::vector<double> d(n), N(n, 0.0);
   for (unsigned int k = 0; k < n; k++) {
     d[k] = coord[k];
     const unsigned int sp = bin_index[bins[k]];
-    if (sp < data_->omega.size() && bin_mass[bins[k]] > 0.0)
+    if (sp < data_->omega.size() && bin_mass[bins[k]] > 0.0) {
       N[k] = rho * data_->omega[sp][point] / bin_mass[bins[k]];
+      if (!weight.empty()) N[k] *= weight[k];
+    }
   }
 
   std::vector<unsigned int> order(n);
@@ -202,7 +205,7 @@ Soot::BuildDistribution(const std::vector<unsigned int>& bins,
 std::pair<std::map<std::string, std::vector<double>>, std::map<std::string, double>>
 Soot::ParticleSizeDistribution(const double local_value, const std::string& particle_type,
                                const std::string& diameter_type, const int min_section,
-                               const double mobility_exponent,
+                               const std::string& correlation_name,
                                const double merge_tol) const {
   if (data_ == nullptr || !data_->gasKinetics()->soot_available_)
     throw std::invalid_argument("The mechanism has no <SootProperties> block");
@@ -212,17 +215,21 @@ Soot::ParticleSizeDistribution(const double local_value, const std::string& part
       diameter_type != "dva")
     throw std::invalid_argument(
         "diameter_type must be \"dmob\", \"dpp\", \"dcol\" or \"dva\"");
+  if (correlation_name != "Kelesidis" && correlation_name != "Sorensen" &&
+      correlation_name != "Rissler")
+    throw std::invalid_argument(
+        "correlation_name must be \"Kelesidis\", \"Sorensen\" or \"Rissler\"");
+  const bool primary_only = (particle_type == "primary");
+  if (primary_only && diameter_type != "dpp")
+    throw std::invalid_argument(
+        "particle_type == \"primary\" (PPSD) is only meaningful with "
+        "diameter_type == \"dpp\"");
 
   const unsigned int point = AbscissaIndex(local_value);
-  const double numpp_tol = 1e-6;
-  const bool primary_only = (particle_type == "primary");
-
   std::vector<unsigned int> bins;
-  std::vector<double> size_m;
+  std::vector<double> size_m, weight;
   for (unsigned int b = 0; b < data_->gasKinetics()->soot_number_of_bins_; b++) {
-    const double npp = data_->gasKinetics()->soot_bin_numpp_[b];
     if (data_->gasKinetics()->soot_bin_section_[b] < min_section) continue;
-    if (primary_only && std::fabs(npp - 1.0) > numpp_tol) continue;
 
     bins.push_back(b);
     if (diameter_type == "dpp") {
@@ -232,22 +239,31 @@ Soot::ParticleSizeDistribution(const double local_value, const std::string& part
     } else if (diameter_type == "dva") {  // volume-equivalent sphere diameter (Bin_dsph)
       size_m.push_back(data_->gasKinetics()->soot_bin_dsph_[b]);
     } else {  // "dmob": numPP <= 0 (nascent) counts as one spherule
+      const double npp = data_->gasKinetics()->soot_bin_numpp_[b];
       double npp_eff = npp;
       if (npp_eff <= 0.0) npp_eff = 1.0;
-      size_m.push_back(data_->gasKinetics()->soot_bin_dpp_[b] *
-                       std::pow(npp_eff, mobility_exponent));
+      const double dpp = data_->gasKinetics()->soot_bin_dpp_[b];
+      double dm;
+      if (correlation_name == "Sorensen") {
+        dm = dpp * std::pow(npp_eff, 0.465);
+      } else if (correlation_name == "Rissler") {
+        dm = 0.794 * dpp * std::pow(npp_eff, 0.51);
+      } else {  // "Kelesidis"
+        dm = dpp * std::pow(npp_eff, 0.45);
+      }
+      size_m.push_back(dm);
+    }
+    if (primary_only) {
+      double npp_eff = data_->gasKinetics()->soot_bin_numpp_[b];
+      if (npp_eff <= 0.0) npp_eff = 1.0;
+      weight.push_back(npp_eff);
     }
   }
-  if (bins.empty()) {
-    if (primary_only)
-      throw std::invalid_argument(
-          "No BIN with numPP == 1 and Bin_section >= min_section");
-    throw std::invalid_argument("No BIN with Bin_section >= min_section");
-  }
+  if (bins.empty()) throw std::invalid_argument("No BIN with Bin_section >= min_section");
 
   std::vector<double> size_nm(size_m.size());
   for (size_t k = 0; k < size_m.size(); k++) size_nm[k] = size_m[k] * 1e9;
-  return BuildDistribution(bins, size_nm, point, merge_tol);
+  return BuildDistribution(bins, size_nm, point, merge_tol, weight);
 }
 
 std::map<std::string, std::vector<double>> Soot::AveragedProfile(

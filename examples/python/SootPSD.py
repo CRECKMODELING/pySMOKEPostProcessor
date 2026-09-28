@@ -18,8 +18,10 @@ print(f"... {len(props)} BINs, sections {props['Bin_section'].min()}"
 # ---------------------------------------------------------------------------
 # 2) Particle size distribution at a chosen location
 #      particle_type = "all"     -> every BIN with Bin_section >= min_section
-#                      "primary" -> only primary particles (numPP == 1) [PPSD]
-#      diameter_type = "dmob" -> mobility, dm = Dpp * numPP**mobility_exponent
+#                      "primary" -> the primary-particle size distribution
+#                                    (PPSD, see SootPPSD.py)
+#      diameter_type = "dmob" -> mobility, dm = f(Dpp, numPP); correlation_name
+#                                 picks "Kelesidis"/"Sorensen"/"Rissler"
 #                      "dpp"  -> primary-particle diameter
 #                      "dcol" -> collision diameter
 #                      "dva"  -> volume-equivalent sphere diameter
@@ -29,9 +31,8 @@ local_value = 0.35  # cm - near peak soot
 
 # Same particle population ("all"). Only "dmob" applies
 # the aggregation transform Dpp * numPP**exp; "dpp"/"dcol"/"dva" read the BIN
-# property directly # TODO check that this is correct @PC
 psd = {}
-for diam in ("dmob", "dpp", "dcol", "dva"):
+for diam in ("dmob", "dcol", "dva"):
     psd[diam] = pp.SootPSD(local_value=local_value, particle_type="all",
                            diameter_type=diam)
     df = psd[diam]
@@ -41,15 +42,11 @@ for diam in ("dmob", "dpp", "dcol", "dva"):
           f"{size_col} {df[size_col].min():.3g}-{df[size_col].max():.4g} nm, "
           f"total N = {df['N[#/m3]'].sum():.3e} #/m3")
 
-# Primary particles only (numPP == 1) - the classic PPSD, on Dpp.
-ppsd = pp.SootPSD(local_value=local_value, particle_type="primary",
-                  diameter_type="dpp")
-
 # ---------------------------------------------------------------------------
 # 3) Comparison between different diameter calculation method
 # ---------------------------------------------------------------------------
 fig, ax = plt.subplots(figsize=(7.2, 5.0))
-for diam, style in zip(("dmob", "dpp", "dcol", "dva"), ("-o", "-s", "-^", "-d")):
+for diam, style in zip(("dmob", "dcol", "dva"), ("-o", "-s", "-^", "-d")):
     plot_distribution(psd[diam], ax=ax, label=f"{diam}", linestyle=style[0],
                       marker=style[1])
 ax.set_xlabel("Particle diameter [nm]")
